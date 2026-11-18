@@ -73,8 +73,8 @@
   },
   "terminal": {
     "ctrl-backspace": "send:\u0017",
-    "ctrl-left": "pane.go:left",
-    "ctrl-right": "pane.go:right",
+    "ctrl-left": "send:\u001bb",
+    "ctrl-right": "send:\u001bf",
     "ctrl-shift-c": "terminal.copy",
     "ctrl-shift-v": "terminal.paste",
     "ctrl-shift-f": "terminal.search",
