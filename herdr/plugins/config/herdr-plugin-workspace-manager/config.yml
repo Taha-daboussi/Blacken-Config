@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/razajamil/herdr-plugin-workspace-manager/main/schema.json
+layouts:
+  - id: aidev
+    tabs:
+      - title: code
+        panes:
+          - title: agent
+            command: claude    # auto-starts claude in this pane
+          - title: shell
+            split: vertical
+      - title: git
+        panes:
+          - title: lazygit
+            command: lazygit
+
+workspaces:
+  - repo: ~/Desktop/work/Research/AiAgents
+    defaultLayout: aidev

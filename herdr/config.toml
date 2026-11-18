@@ -1,0 +1,52 @@
+onboarding = false
+
+[terminal]
+new_cwd = "follow"
+
+[keys]
+prefix = "ctrl+a"
+workspace_picker = ["ctrl+b", "prefix+w"]
+focus_pane_left = "prefix+left"
+focus_pane_down = "prefix+down"
+focus_pane_up = "prefix+up"
+focus_pane_right = "prefix+right"
+navigate_workspace_up = "ctrl+up"
+navigate_workspace_down = "ctrl+down"
+navigate_pane_up = "up"
+navigate_pane_down = "down"
+close_pane = ""
+
+[[keys.command]]
+key = "prefix+x"
+type = "popup"
+command = "~/.config/herdr/scripts/confirm-close-pane.sh"
+description = "close pane (asks first)"
+width = 60
+height = 10
+
+[session]
+resume_agents_on_restore = true
+
+[worktrees]
+directory = "~/.herdr/worktrees"
+
+[ui]
+show_agent_labels_on_pane_borders = true
+agent_panel_sort = "priority"
+
+[ui.sidebar.agents]
+rows = [
+  ["state_icon", "agent", "state_text"],
+  ["workspace", "tab", "pane"],
+]
+
+[ui.toast]
+delivery = "system"
+delay_seconds = 1
+
+[experimental]
+pane_history = false
+allow_nested = true
+
+[theme]
+name = "catppuccin"
