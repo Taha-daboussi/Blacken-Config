@@ -144,6 +144,13 @@
                           "content": {
                             "mod": "changes"
                           }
+                        },
+                        {
+                          "id": "linear",
+                          "type": "block",
+                          "content": {
+                            "mod": "linear"
+                          }
                         }
                       ],
                       "active": "files"
