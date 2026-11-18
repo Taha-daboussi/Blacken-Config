@@ -50,13 +50,22 @@ function priorityIcon(p) {
   return `mods/linear/pr-${p ?? 0}.svg`;
 }
 
-function workingAgents(identifier) {
-  const re = new RegExp(`(^|[^a-z0-9])${identifier}([^0-9]|$)`, "i");
+function agentsByIssue() {
   const terms = new Map(terminals().map((t) => [t.address, t]));
-  return agents().filter((a) => {
+  const byKey = new Map();
+  for (const a of agents()) {
     const t = terms.get(a.address);
-    return [a.title, t?.name, t?.cwd, t?.labels?.["herdr.summary"]].some((s) => s && re.test(s));
-  });
+    const keys = new Set();
+    for (const s of [a.title, t?.name, t?.cwd, t?.labels?.["herdr.summary"]]) {
+      if (!s) continue;
+      for (const m of s.matchAll(/(?:^|[^a-z0-9])([a-z]{2,10}-\d+)(?!\d)/gi)) keys.add(m[1].toUpperCase());
+    }
+    for (const k of keys) {
+      if (!byKey.has(k)) byKey.set(k, []);
+      byKey.get(k).push(a);
+    }
+  }
+  return byKey;
 }
 
 async function dispatchIssue(ws, issue) {
@@ -235,8 +244,8 @@ export default class Linear extends View {
     return ws;
   }
 
-  issueRow(t, ws, issue) {
-    const busy = workingAgents(issue.identifier);
+  issueRow(t, ws, issue, byIssue) {
+    const busy = byIssue.get(issue.identifier.toUpperCase()) ?? [];
     return h_flex().id(`is-${issue.id}`).h(30).px(8).gap(8).flex_none().items_center().rounded(7).cursor_pointer()
       .hover((s) => s.bg(t.hover))
       .on_click((_e, cx) => cx.open_url(issue.url))
@@ -256,6 +265,7 @@ export default class Linear extends View {
   }
 
   groups(t, ws, d) {
+    const byIssue = agentsByIssue();
     const byState = new Map();
     for (const issue of d.issues) {
       const g = byState.get(issue.state.id) ?? { state: issue.state, issues: [] };
@@ -274,7 +284,7 @@ export default class Linear extends View {
           .child(svg(stateIcon(g.state.type)).size(14).flex_none().text_color(g.state.color ?? t.muted))
           .child(div().font_semibold().text_size(12.5).child(g.state.name))
           .child(div().text_size(11.5).text_color(t.dim).child(String(g.issues.length))))
-        .when(!closed, (el) => el.children(g.issues.map((issue) => this.issueRow(t, ws, issue))));
+        .when(!closed, (el) => el.children(g.issues.map((issue) => this.issueRow(t, ws, issue, byIssue))));
     });
   }
 
