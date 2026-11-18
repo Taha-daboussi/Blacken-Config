@@ -1,0 +1,17 @@
+[Unit]
+Description=Watch Herdr settings for changes
+
+[Path]
+PathModified=%h/.config/herdr/config.toml
+PathModified=%h/.config/herdr/scripts
+PathModified=%h/.config/herdr/plugins/config
+PathModified=%h/.config/herdr-app/settings.json
+PathModified=%h/.config/herdr-app/keys.json
+PathModified=%h/.config/herdr-app/programs.json
+PathModified=%h/.config/herdr-app/layouts
+PathModified=%h/.config/herdr-app/themes
+PathModified=%h/.config/herdr-app/mods
+Unit=herdr-config-autopush.service
+
+[Install]
+WantedBy=default.target

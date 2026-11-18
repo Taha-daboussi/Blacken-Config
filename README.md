@@ -28,6 +28,24 @@ git add -A && git commit -m "chore: sync settings" && git push
 
 `sync.sh` writes `__HOME__` in place of your home folder path.
 
+## Auto push
+
+A systemd user service pushes each settings change to GitHub.
+
+- `herdr-config-autopush.path` starts the push a few seconds after a watched file or folder changes.
+- `herdr-config-autopush.timer` also runs it every 15 minutes. This catches changes inside mod folders.
+- `autopush.sh` runs `sync.sh`, checks the new lines for secrets, commits, and pushes. If it finds a possible secret, it pushes nothing and shows a desktop alert.
+
+Turn it on:
+
+```sh
+ln -sf "$PWD"/systemd/* ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now herdr-config-autopush.path herdr-config-autopush.timer
+```
+
+See the log: `journalctl --user -u herdr-config-autopush.service`
+
 ## Install on a new machine
 
 1. Install `herdr` and `herdr-app`.
