@@ -123,13 +123,13 @@ class IssueMenu {
     const p = props();
     const issue = p.issue;
     const states = sortStates(p.states ?? []);
-    return v_flex().id("linear-menu").size_full().min_h(0).p(5).bg(t.popover).text_size(12.8)
+    return v_flex().id("linear-menu").w_full().p(5).bg(t.popover).text_size(12.8)
       .child(h_flex().px(8).h(30).gap(8).flex_none().items_center()
         .child(div().flex_none().text_color(t.muted).child(issue.identifier))
         .child(div().flex_1().min_w(0).truncate().text_color(t.foreground).child(issue.title)))
       .when(Boolean(this.busy || this.error), (el) => el.child(div().px(8).py(4).flex_none().text_size(11.5)
         .text_color(this.error ? t.blocked : t.muted).child(this.error ?? `Saving: ${this.busy}…`)))
-      .child(v_flex().id("linear-menu-scroll").flex_1().min_h(0).overflow_y_scrollbar()
+      .child(v_flex().id("linear-menu-list")
         .child(this.heading(t, "Status"))
         .children(states.map((s) => this.row(t, `st-${s.id}`, stateIcon(s.type), s.color, s.name, s.id === issue.state.id,
           (cx) => s.id !== issue.state.id && this.update({ stateId: s.id }, s.name, cx))))
@@ -199,7 +199,7 @@ export default class Linear extends View {
 
   openMenu(ws, issue) {
     const states = this.data[ws]?.teams?.[issue.team.id] ?? [];
-    openOverlay({ mod: "linear", kind: "popup", width: 260, height: Math.min(560, 150 + (states.length + PRIORITIES.length) * 28), props: { ws, issue, states } });
+    openOverlay({ mod: "linear", kind: "popup", width: 260, height: Math.min(680, 214 + (states.length + PRIORITIES.length) * 28), props: { ws, issue, states } });
   }
 
   header(t, ws, d) {
