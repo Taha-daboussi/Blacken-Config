@@ -101,7 +101,7 @@ export const AGENTS = {
     name: "Claude Code",
     bin: "claude",
     apps: ["claude-code", "claude"],
-    resume: (id, flags) => ["claude", ...flags, "--resume", id],
+    resume: (id, flags, prompt) => ["claude", ...flags, "--resume", id, ...(prompt ? [prompt] : [])],
     fork: (id, flags) => ["claude", ...flags, "--resume", id, "--fork-session"],
     end: claudeEnd,
     env: ["CLAUDE_CONFIG_DIR"],
@@ -486,12 +486,12 @@ export const shortId = (id) => (id ? String(id).slice(0, 8) : "");
  * The command line that resumes or forks a session. `unattended`: for an
  * automatic resume, without the flags that lift approvals or the sandbox.
  */
-export function command(rec, kind = "resume", { unattended = false } = {}) {
+export function command(rec, kind = "resume", { unattended = false, prompt = null } = {}) {
   const agent = AGENTS[rec?.agent];
   if (!agent || typeof agent[kind] !== "function" || !validId(rec.session)) return null;
   const flags = safeFlags(rec.agent, rec.flags ?? []);
   // No variables: a resume runs with the shell's own (see `needs`).
-  return agent[kind](rec.session, unattended ? attendedFlags(rec.agent, flags).kept : flags);
+  return agent[kind](rec.session, unattended ? attendedFlags(rec.agent, flags).kept : flags, prompt);
 }
 
 /**
@@ -665,8 +665,8 @@ export function shouldResume(rec, { pid, since = null, shellPid, env = {} }) {
 }
 
 /** `cd -- <folder> && <agent> … --resume <id>`, one line, or "". */
-export function resumeLine(rec, { unattended = false } = {}) {
-  const argv = command(rec, "resume", { unattended });
+export function resumeLine(rec, { unattended = false, prompt = null } = {}) {
+  const argv = command(rec, "resume", { unattended, prompt });
   if (!argv) return "";
   return `${rec.cwd ? `cd -- ${shQuote(rec.cwd)} && ` : ""}${shJoin(argv)}`;
 }
@@ -678,13 +678,14 @@ export function resumeLine(rec, { unattended = false } = {}) {
  * Nobody is watching it start, so the flags that lift approvals or the
  * sandbox are left out, and the note says which.
  */
-export function resumeScript(rec, engine) {
-  const line = resumeLine(rec, { unattended: true });
+export function resumeScript(rec, engine, { prompt = null } = {}) {
+  const line = resumeLine(rec, { unattended: true, prompt });
   if (!line) return "";
   const name = AGENTS[rec.agent].name;
   const { dropped } = attendedFlags(rec.agent, safeFlags(rec.agent, rec.flags ?? []));
   const without = dropped.length ? ` without ${dropped.join(", ")} (quit and resume it from the Revive dialog to keep ${dropped.length > 1 ? "them" : "it"})` : "";
-  const note = `↻ Revive: resuming ${name} session ${shortId(rec.session)}${without}. REVIVE_AUTO=0 skips this.`;
+  const cont = prompt ? " and continuing its unfinished turn" : "";
+  const note = `↻ Revive: resuming ${name} session ${shortId(rec.session)}${cont}${without}. REVIVE_AUTO=0 skips this.`;
   const body = [
     `  printf '\\033[2m%s\\033[0m\\n' ${shQuote(note)}`,
     `  __revive_t=$SECONDS`,

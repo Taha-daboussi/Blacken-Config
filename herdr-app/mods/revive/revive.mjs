@@ -19,7 +19,7 @@
 // Hooks never fail an agent: every error is swallowed and the exit code is 0.
 
 import { execFile, execFileSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync, writeFileSync, copyFileSync, mkdirSync, renameSync, realpathSync, rmSync, statSync, lstatSync, symlinkSync, chmodSync } from "node:fs";
+import { existsSync, openSync, readSync, closeSync, readFileSync, readdirSync, writeFileSync, copyFileSync, mkdirSync, renameSync, realpathSync, rmSync, statSync, lstatSync, symlinkSync, chmodSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -224,11 +224,55 @@ const claudeDir = (env = process.env) => env.CLAUDE_CONFIG_DIR || join(homedir()
 export function hasTranscript(rec) {
   if (EXTENSION_AGENTS.includes(rec.agent)) return !rec.transcript || existsSync(rec.transcript);
   if (rec.agent !== "claude") return true;
+  return claudeTranscript(rec) !== null;
+}
+
+function claudeTranscript(rec) {
   const projects = join(claudeDir(), "projects");
   const file = `${rec.session}.jsonl`;
-  if (rec.cwd && existsSync(join(projects, rec.cwd.replace(/[^A-Za-z0-9]/g, "-"), file))) return true;
-  try { return readdirSync(projects).some((dir) => existsSync(join(projects, dir, file))); }
-  catch { return false; }
+  const own = rec.cwd ? join(projects, rec.cwd.replace(/[^A-Za-z0-9]/g, "-"), file) : null;
+  if (own && existsSync(own)) return own;
+  try {
+    const dir = readdirSync(projects).find((d) => existsSync(join(projects, d, file)));
+    return dir ? join(projects, dir, file) : null;
+  } catch { return null; }
+}
+
+export const CONTINUE_PROMPT = "Continue where you left off. The computer shut down before you finished your last turn.";
+
+function tail(path, bytes = 512 * 1024) {
+  const fd = openSync(path, "r");
+  try {
+    const size = statSync(path).size;
+    const len = Math.min(size, bytes);
+    const buf = Buffer.alloc(len);
+    readSync(fd, buf, 0, len, size - len);
+    const text = buf.toString("utf8");
+    return len < size ? text.slice(text.indexOf("\n") + 1) : text;
+  } finally { closeSync(fd); }
+}
+
+const userText = (msg) => (typeof msg.content === "string" ? msg.content : (msg.content ?? []).map((c) => c.text ?? (typeof c.content === "string" ? c.content : "")).join(" "));
+
+export function unfinishedTurn(lines) {
+  for (let i = lines.length - 1; i >= 0; i--) {
+    let e;
+    try { e = JSON.parse(lines[i]); } catch { continue; }
+    if ((e.type !== "user" && e.type !== "assistant") || e.isSidechain || e.isMeta || !e.message) continue;
+    if (e.type === "assistant") return !["end_turn", "stop_sequence"].includes(e.message.stop_reason);
+    const text = userText(e.message);
+    if (text.includes("[Request interrupted by user") || text.includes("The user doesn't want to proceed with this tool use")) return false;
+    return true;
+  }
+  return false;
+}
+
+function continuePrompt(rec) {
+  if (rec.agent !== "claude" || process.env.REVIVE_CONTINUE === "0") return null;
+  try {
+    const file = claudeTranscript(rec);
+    return file && unfinishedTurn(tail(file).split("\n")) ? CONTINUE_PROMPT : null;
+  } catch { return null; }
 }
 
 async function check(args) {
@@ -254,7 +298,7 @@ async function check(args) {
   if (!hasTranscript(rec)) { debug("the session has no transcript; forgot it"); await label(t, clearArgs()); return; }
   // Mark it first: a second shell started from this one must not resume it again.
   await label(t, resumedArgs({ pid, since }));
-  process.stdout.write(resumeScript(rec, ENGINE) + "\n");
+  process.stdout.write(resumeScript(rec, ENGINE, { prompt: continuePrompt(rec) }) + "\n");
 }
 
 async function failed() {
