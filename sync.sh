@@ -31,7 +31,10 @@ for name in "${mods[@]}"; do
   rsync -a --exclude node_modules --exclude gpui-kit.d.ts --exclude .cache "$app/mods/$name/" "$repo/herdr-app/mods/$name/"
 done
 
-grep -rlF "$HOME" "$repo/herdr" "$repo/herdr-app" | while read -r f; do
+mkdir -p "$repo/claude/hooks"
+cp "$HOME/.claude/hooks/session-namer.sh" "$repo/claude/hooks/"
+
+grep -rlF "$HOME" "$repo/herdr" "$repo/herdr-app" "$repo/claude" | while read -r f; do
   sed -i "s|$HOME|__HOME__|g" "$f"
 done
 echo "Synced: ${mods[*]}"

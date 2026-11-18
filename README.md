@@ -17,6 +17,9 @@ My settings for Herdr: the terminal app (`herdr`) and the desktop app (`herdr-ap
     - `agents-drag`, `pane-drag`, `tabs-drop`: drag an agent onto a tab to move it there
     - `herdr-md`, `over9k-usage`, `revive`, `space-switcher`, `tmux-prefix`
 
+- `claude/` goes to `~/.claude`
+  - `hooks/session-namer.sh`: names each Claude Code session, for example `DAW-16 E2E test copytrade limit entry`. Herdr shows these names in the agents list.
+
 Not saved: logs, sockets, sessions, window state, telemetry, and the mods that ship with Herdr.
 
 ## Save the current settings
@@ -51,4 +54,5 @@ See the log: `journalctl --user -u herdr-config-autopush.service`
 1. Install `herdr` and `herdr-app`.
 2. Run `./install.sh`. It makes a `.bak.<time>` copy of each settings file first.
 3. Install the plugins in `herdr/plugins.txt`.
-4. Restart `herdr-app`.
+4. Add the session namer to `~/.claude/settings.json` as a `UserPromptSubmit` hook: `bash "$HOME/.claude/hooks/session-namer.sh"`.
+5. Restart `herdr-app`.

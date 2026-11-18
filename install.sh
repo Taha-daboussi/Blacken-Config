@@ -17,6 +17,10 @@ mkdir -p "$tui/plugins"
 rsync -a "$repo/herdr/plugins/config/" "$tui/plugins/config/"
 rsync -a "$repo/herdr-app/" "$app/"
 
+mkdir -p "$HOME/.claude/hooks"
+backup "$HOME/.claude/hooks/session-namer.sh"
+cp "$repo/claude/hooks/session-namer.sh" "$HOME/.claude/hooks/"
+
 grep -rlF "__HOME__" "$tui" "$app" --include='*.json' --include='*.toml' --include='*.yml' --include='*.sh' --include='*.js' 2>/dev/null | while read -r f; do
   sed -i "s|__HOME__|$HOME|g" "$f"
 done
