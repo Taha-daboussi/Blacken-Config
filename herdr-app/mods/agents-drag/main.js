@@ -2,7 +2,7 @@
 
 import { View, div, image, svg } from "gpui-kit";
 import { v_flex, h_flex, ScrollHandle } from "gpui-base";
-import { agents, terminals, panes, focused, spaces, run, theme, shared, setShared, setAgentOrder, openOverlay, closeOverlay, props, window, layout } from "herdr";
+import { agents, terminals, panes, focused, spaces, run, theme, shared, setShared, setAgentOrder, openOverlay, closeOverlay, props, window, layout, home, readTextFile, checking } from "herdr";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -49,6 +49,15 @@ function title(tab, l) {
   const telling = live && live !== (l?.terminal ?? l?.address) && live !== prog && !path && !live.includes("@") && live.toLowerCase() !== l?.program?.key;
   return (tab.name === prog || !tab.named) && telling ? live : tab.name;
 }
+function shortSummary(text) {
+  let s = text.replace(/^session( summary)?\s*:\s*/i, "").trim();
+  s = s.charAt(0).toUpperCase() + s.slice(1);
+  if (s.length <= 64) return s.replace(/[.\s]+$/, "");
+  const cut = s.slice(0, 64);
+  const at = cut.lastIndexOf(" ");
+  return `${(at > 30 ? cut.slice(0, at) : cut).replace(/[\s,;:.(-]+$/, "")}\u2026`;
+}
+
 const RANK = { blocked: 4, done: 3, working: 2, idle: 1 };
 // A sub-agent without a pane isn't in agents(): its raw word, error counting as
 // blocked. It's never done: it reports to its parent, and the parent's done is the news.
@@ -96,6 +105,11 @@ export default class Agents extends View {
     if (!this.pendingPins.length) localStorage.removeItem("pins");
     this.migratingPins = new Set();
     this.scroll = ScrollHandle.new();
+    this.summaries = new Map();
+    if (!checking()) {
+      this.loadSummaries(cx);
+      cx.timer.every(15000, (cx) => this.loadSummaries(cx));
+    }
     cx.timer.every(30000, (cx) => cx.notify());
     this.perf = { n: 0, ms: 0, max: 0, hov: 0, wheel: 0, why: {} };
     cx.timer.every(1000, () => { const p = this.perf; if (!p.n && !p.wheel && !p.hov) return; dexec("sh", ["-c", 'printf "%s\n" "$1" >> __HOME__/.config/herdr-app/data/agents-perf.log', "sh", `${Date.now()} renders=${p.n} total=${p.ms.toFixed(1)}ms max=${p.max.toFixed(1)}ms hover=${p.hov} wheel=${p.wheel}`]); this.perf = { n: 0, ms: 0, max: 0, hov: 0, wheel: 0 }; });
@@ -136,6 +150,23 @@ export default class Agents extends View {
     this.pendingPins = pending;
     if (pending.length) localStorage.setItem("pins", JSON.stringify(pending));
     else localStorage.removeItem("pins");
+  }
+
+  loadSummaries(cx) {
+    cx.spawn(async (cx) => {
+      const dir = `${home()}/.cache/claude-session-namer`;
+      const next = new Map();
+      for (const t of terminals()) {
+        const session = t.labels?.["revive.session"];
+        if (t.state !== "live" || !session || String(t.address).includes("/")) continue;
+        const text = (await readTextFile(`${dir}/${session}.summary`).catch(() => null))?.trim();
+        if (text) next.set(t.address, text);
+      }
+      const same = next.size === this.summaries.size && [...next].every(([k, v]) => this.summaries.get(k) === v);
+      if (same) return;
+      this.summaries = next;
+      cx.notify();
+    });
   }
 
   since(a) {
@@ -347,11 +378,16 @@ export default class Agents extends View {
       // Under a space header the space goes without saying; an automatic tab number says nothing.
       // Without a space header above (priority, pinned) the row names its space.
       const full = byPriority || isPinned;
-      const name = full ? a.space_name || label(a) : more ?? (/^\d+$/.test(label(a)) ? a.program?.name || label(a) : label(a));
+      const fullSummary = this.summaries.get(a.address);
+      const summary = fullSummary ? shortSummary(fullSummary) : null;
+      const oldName = full ? a.space_name || label(a) : more ?? (/^\d+$/.test(label(a)) ? a.program?.name || label(a) : label(a));
+      const name = summary ?? oldName;
+      const where = [a.space_name, a.tab_name && !/^\d+$/.test(a.tab_name) ? a.tab_name : null].filter(Boolean).join(" \u00b7 ");
       return h_flex()
         .id(`ag-${a.address}`)
         .px(8)
-        .h(30)
+        .when(!summary, (el) => el.h(30))
+        .when(Boolean(summary), (el) => el.min_h(30).py(5).tooltip(`${fullSummary}\n${more ?? label(a)}`))
         .flex_none()
         .rounded(8)
         .items_center()
@@ -374,9 +410,12 @@ export default class Agents extends View {
             this.folded.has(a.address) ? this.folded.delete(a.address) : this.folded.add(a.address);
             cx.notify();
           })).child(pic)))
-        .child(h_flex().flex_1().min_w(0).gap(5).items_center()
+        .when(Boolean(summary), el => el.child(v_flex().flex_1().min_w(0).gap(1)
+          .child(div().min_w(0).whitespace_normal().text_size(12.5).text_color(idle ? t.muted : t.foreground).child(name))
+          .when(full && Boolean(where), el => el.child(div().min_w(0).truncate().text_size(11).text_color(t.dim).child(where)))))
+        .when(!summary, el => el.child(h_flex().flex_1().min_w(0).gap(5).items_center()
           .child(div().min_w(0).max_w(full && more ? 120 : 200).truncate().text_color(idle ? t.muted : t.foreground).child(name))
-          .when(full && Boolean(more), el => el.child(div().flex_1().min_w(0).truncate().text_color(t.dim).child(`\u00b7 ${more}`))))
+          .when(full && Boolean(more), el => el.child(div().flex_1().min_w(0).truncate().text_color(t.dim).child(`\u00b7 ${more}`)))))
         .when(Boolean(machine), el => el.child(div().text_size(10).text_color(t.dim).child(machine)))
         .when(subs.length > 0, el => el.child(fold(a, subs)))
         .when(this.hovered === a.address, el => el.child(pin))
@@ -421,9 +460,55 @@ export default class Agents extends View {
           .when(!byPriority && top && top !== "idle", (el) => el.child(this.status(t, { status: top }, true)))
           .child(svg("mods/workspace-chrome/chevron-right.svg").size(11).flex_none().text_color(t.dim)));
     };
+    const tabHeader = (g) => {
+      const open = !this.folded.has(g.id);
+      const top = g.members.reduce((m, a) => ((RANK[a.status] ?? 0) > (RANK[m] ?? 0) ? a.status : m), null);
+      return h_flex()
+        .id(g.id)
+        .pl(10)
+        .pr(8)
+        .mt(2)
+        .h(26)
+        .flex_none()
+        .gap(6)
+        .items_center()
+        .rounded(6)
+        .text_size(11.5)
+        .font_medium()
+        .text_color(t.muted)
+        .cursor_pointer()
+        .hover((s) => s.bg(t.hover).text_color(t.foreground))
+        .on_click((_e, cx) => {
+          open ? this.folded.add(g.id) : this.folded.delete(g.id);
+          cx.notify();
+        })
+        .child(svg(`mods/workspace-chrome/chevron-${open ? "down" : "right"}.svg`).size(11).flex_none().text_color(t.dim))
+        .child(div().truncate().child(g.label))
+        .child(div().text_color(t.dim).child(String(g.members.length)))
+        .child(div().flex_1())
+        .when(Boolean(top) && top !== "idle", (el) => el.child(this.status(t, { status: top }, true)));
+    };
+    const namedSpaces = new Set(spaces().filter((s) => s.tabs.some((tab) => tab.named)).map((s) => s.id));
+    const byTab = (members) => {
+      const out = [];
+      for (const a of members) {
+        const id = `tb-${a.tab}`;
+        if (out.at(-1)?.id === id) out.at(-1).members.push(a);
+        else {
+          const tab = tabs.get(a.tab);
+          const name = tab?.name ?? a.tab_name ?? "";
+          out.push({ id, label: /^\d+$/.test(name) ? `Tab ${name}` : name, members: [a] });
+        }
+      }
+      return out;
+    };
+    const body = (g) => {
+      if (byPriority || g.id === "pinned" || !namedSpaces.has(g.members[0]?.space)) return g.members.flatMap(withKids);
+      return byTab(g.members).flatMap((tg) => [tabHeader(tg), ...(this.folded.has(tg.id) ? [] : tg.members.flatMap(withKids))]);
+    };
     const rows = collapsed
       ? list.flatMap(withKids)
-      : groups.flatMap((g) => [header(g), ...(this.folded.has(g.id) ? [] : g.members.flatMap(withKids))]);
+      : groups.flatMap((g) => [header(g), ...(this.folded.has(g.id) ? [] : body(g))]);
 
     return v_flex()
       .size_full()
