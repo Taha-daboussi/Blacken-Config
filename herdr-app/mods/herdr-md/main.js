@@ -32,6 +32,9 @@ const MAX_W = 960, PAD = 64, TOP = 28;
 // a long glide for jumps (highlights, search, headings, gg/G), short for j/k and the wheel.
 // A new agent note waits for the glide, fades in, then types itself out.
 const GLIDE = 560, STEP = 140, NUDGE = 60;
+const REACH = 240;
+const wrapH = (n, width, px = SIZE.body) => Math.max(1, Math.ceil(n * px * 0.5 / Math.max(60, width))) * px * 1.65;
+const lineCount = s => (s.match(/\n/g)?.length ?? 0) + 1;
 // The help overlay's list, in the order of the key handler (keys()).
 // Two columns of sections.
 const HELP = [[
@@ -144,6 +147,7 @@ export default class Md extends View {
     this.blocks = []; this.error = null; this.codes = []; this.images = {}; this.figs = {}; this.videos = {}; this.videoList = []; this.born = Date.now() * 1e6; this.videoSeq = null; this.pendingVideo = null;
     this.noteAlpha = 1; this.typed = Infinity;
     this.offset = 0; this.motion = 0; this.heights = []; this.loadGen = 0; this.shown = null; this.viewH = 0; this.contentH = 0; this.colW = MAX_W - PAD * 2;
+    this.drawnAt = 0; this.span = null;
     this.notes = { highlights: [] }; this.seq = null; this.pendingFocus = null; this.aim = null;
     this.folded = new Set(); this.hidden = []; this.ord = [];
     this.labels = new Map(); this.anchors = new Map(); this.changed = new Set(); this.removed = new Map(); this.lastHashes = null;
@@ -271,7 +275,7 @@ export default class Md extends View {
 
   // Put a document's blocks on screen. Keep measured heights: a reloaded block
   // whose size didn't change never reports again (on_size_change fires on new or
-  // changed sizes only), and reaim() waits for every height above its target.
+  // changed sizes only).
   setBlocks(list) {
     this.blocks = this.index(list); this.heights.length = Math.min(this.heights.length, this.blocks.length); this.error = null;
     this.blocks.forEach(b => { b.find = squash(b.type === "heading" ? plain(b.tokens) : b.raw.replace(/[*_`#>|~]+/g, " ")); });
@@ -459,7 +463,7 @@ export default class Md extends View {
     const i = this.aim;
     if (i === null || i === undefined) return;
     let y = TOP;
-    for (let j = 0; j < i; j++) { if (this.hidden[j]) continue; if (this.heights[j] === undefined) return; y += this.heights[j]; }
+    for (let j = 0; j < i; j++) { if (this.hidden[j]) continue; y += this.h(j); }
     const to = this.clamp(y - Math.min(120, this.viewH / 4));
     if (Math.abs(to - this.offset) > 2) this.motion = GLIDE;
     this.offset = to;
@@ -493,7 +497,7 @@ export default class Md extends View {
       if (this.hidden[i]) continue;
       if (y > this.offset + 40) break;
       if (this.blocks[i].type === "heading") last = i;
-      y += this.heights[i] ?? 0;
+      y += this.h(i);
     }
     return last;
   }
@@ -928,7 +932,13 @@ export default class Md extends View {
       .when(this.numbers !== "off", el => el.child(h_flex().justify_end().absolute().left(-PAD - 12).top(numTop).w(PAD - 14).font_family(BODY()).text_size(12).line_height(1.6)
         .text_color(cur ? t.accent : t.dim).when(cur, el => el.font_semibold())
         .child(numLabel(i, cur ? cp : null, gutterLabel(this.numbers, i, this.cursor, tok.from, this.ord), t))))
-      .on_size_change((size, cx) => { if (this.heights[i] !== size.height / Z()) { this.heights[i] = size.height / Z(); this.reaim(); cx.notify(); } })
+      .on_size_change((size, cx) => {
+        const nh = size.height / Z(); if (this.heights[i] === nh) return;
+        const old = this.heights[i] ?? this.est(i), anchor = this.onScreen(this.cursor) ? this.cursor : this.firstOnScreen();
+        this.heights[i] = nh;
+        if (this.aim == null && i < anchor) { this.offset += nh - old; this.motion = Math.max(0, (this.span?.until ?? 0) - Date.now()); }
+        this.reaim(); cx.notify();
+      })
       .child(div().id(`blk-${i}`).relative()
         .when(!tr, el => el.px(14).mx(-14).rounded(6))
         // A table row draws its piece of the table's frame, and its stripe under
@@ -956,6 +966,29 @@ export default class Md extends View {
           .child(div().flex_1().min_w(0).text_size(14).child(this.typed === Infinity
             ? this.inline(`note-${i}`, m.note)
             : div().child(plainNote(m.note).slice(0, this.typed) + "▍")))));
+  }
+
+  shownRows(t) {
+    const now = Date.now();
+    if (this.offset !== this.drawnAt) {
+      const live = this.span && now < this.span.until, s = live ? this.span : { lo: this.drawnAt, hi: this.drawnAt, until: 0 };
+      this.span = { lo: Math.min(s.lo, this.offset), hi: Math.max(s.hi, this.offset), until: Math.max(s.until, now + this.motion) };
+      this.drawnAt = this.offset;
+    }
+    if (this.span && now >= this.span.until) this.span = null;
+    const v = this.viewH, a = this.span?.lo ?? this.offset, b = this.span?.hi ?? this.offset;
+    const wins = b - a <= v ? [[a - REACH, b + v + REACH]] : [[a - REACH, a + v + REACH], [b - REACH, b + v + REACH]];
+    const out = []; let y = TOP, gap = 0;
+    this.blocks.forEach((tok, i) => {
+      const h = this.h(i);
+      if (!this.hidden[i] && wins.some(([p, q]) => y + h > p && y < q)) {
+        if (gap) { out.push(div().flex_none().h(gap)); gap = 0; }
+        out.push(this.row(tok, i, t));
+      } else gap += h;
+      y += h;
+    });
+    if (gap) out.push(div().flex_none().h(gap));
+    return out;
   }
 
   removedMark(n, t) {
@@ -1505,22 +1538,69 @@ export default class Md extends View {
   }
 
   // ---- cursor ----
-  yOf(i) { let y = TOP; for (let j = 0; j < i; j++) if (!this.hidden[j]) y += this.heights[j] ?? 0; return y; }
+  est(i) {
+    const b = this.blocks[i], m = this.marks?.get(i);
+    if (b.estW !== this.colW) { b.estLive = false; b.estV = this.estBlock(b); b.estW = b.estLive ? null : this.colW; }
+    return b.estV + (this.removed.has(i) ? 22 : 0) + (m?.note && m.last ? 40 + wrapH(m.note.length, this.colW - 110, 14) : 0);
+  }
+
+  estBlock(b) {
+    const w = this.colW;
+    const pic = im => {
+      b.estLive = true;
+      const s = this.images[im.href]?.path ? this.images[im.href] : this.videos[im.href]?.meta;
+      return s?.w ? 16 + Math.min(560, s.h * Math.min(s.w, w) / s.w) + (im.text || this.videos[im.href] ? 27 : 0) : 50;
+    };
+    const fig = () => {
+      b.estLive = true;
+      const live = this.figs[b.liveKey], f = live?.path ? live : this.figs[b.fig];
+      if (!f?.path) return 54 + lineCount(b.text) * 13 * 1.65;
+      const max = w - (isMath(b) ? 0 : 34);
+      return (isMath(b) ? 20 : 50) + (f.w > max ? f.h * max / f.w : f.h);
+    };
+    switch (b.type) {
+      case "heading": return (b.depth <= 2 ? 39 : 18) + wrapH(b.raw.length, w - 24, SIZE[`h${b.depth}`]);
+      case "paragraph": {
+        const imgs = b.tokens.filter(x => x.type === "image");
+        return imgs.length && b.tokens.every(x => x.type === "image" || (x.type === "text" && !x.text.trim()) || x.type === "br")
+          ? imgs.reduce((s, im) => s + pic(im), 0) : 10 + wrapH(b.raw.length, w);
+      }
+      case "math": return fig();
+      case "notice": return 40 + wrapH(b.text.length, w - 28, 14);
+      case "code": return isMath(b) || isMermaid(b) ? fig() : 50 + Math.min(lineCount(b.text), 40) * 20;
+      case "blockquote": return 36 + wrapH(b.raw.length, w - 35);
+      case "listitem": return 4 + Math.max(lineCount(b.raw.trim()) * SIZE.body * 1.65, wrapH(b.raw.length, w - 32));
+      case "hr": return 33;
+      case "table": return 18 + (b.rows.length + 1) * 40;
+      case "trow": {
+        const cells = b.r < 0 ? b.table.header : b.table.rows[b.r], cw = w / cells.length - 24;
+        return 15 + (b.last ? 1 : 0) + Math.max(...cells.map(c => wrapH(c.text.length, cw)));
+      }
+      case "html": return 4 + lineCount(b.raw.trim()) * 13 * 1.65;
+      default: return 8 + wrapH(b.raw?.length ?? 0, w);
+    }
+  }
+
+  edge(i) { const b = this.blocks[i]; return b?.type === "trow" ? (b.first ? 8 : 0) + (b.last ? 8 : 0) : 0; }
+
+  h(i) { return this.hidden[i] ? 0 : (this.heights[i] ?? this.est(i)) + this.edge(i); }
+
+  yOf(i) { let y = TOP; for (let j = 0; j < i; j++) if (!this.hidden[j]) y += this.h(j); return y; }
 
   move(i, d) { let j = i; for (;;) { const n = j + d; if (n < 0 || n >= this.blocks.length) return j; j = n; if (!this.hidden[j]) return j; } }
 
   // The first block on screen, for when the cursor was scrolled away from.
   firstOnScreen() {
     let y = TOP;
-    for (let i = 0; i < this.blocks.length; i++) { if (this.hidden[i]) continue; const h = this.heights[i] ?? 0; if (y + h > this.offset + 10) return i; y += h; }
+    for (let i = 0; i < this.blocks.length; i++) { if (this.hidden[i]) continue; const h = this.h(i); if (y + h > this.offset + 10) return i; y += h; }
     return 0;
   }
 
-  onScreen(i) { const y = this.yOf(i), h = this.heights[i] ?? 0; return y + h > this.offset && y < this.offset + this.viewH; }
+  onScreen(i) { const y = this.yOf(i), h = this.h(i); return y + h > this.offset && y < this.offset + this.viewH; }
 
   setCursor(i, cx, center) {
     this.cursor = Math.max(0, Math.min(i, this.blocks.length - 1)); this.aim = null;
-    const y = this.yOf(this.cursor), h = this.heights[this.cursor] ?? 0, m = 60, from = this.offset;
+    const y = this.yOf(this.cursor), h = this.h(this.cursor), m = 60, from = this.offset;
     if (center) this.offset = this.clamp(y + h / 2 - this.viewH / 2);
     else if (y < this.offset + m || h > this.viewH - 2 * m) this.offset = this.clamp(y - m);
     else if (y + h > this.offset + this.viewH - m) this.offset = this.clamp(y + h - this.viewH + m);
@@ -1531,7 +1611,7 @@ export default class Md extends View {
   // Move by about `px` pixels of content, block by block.
   moveBy(px, cx) {
     let i = this.cursor, gone = 0; const d = Math.sign(px);
-    while (gone < Math.abs(px)) { const n = this.move(i, d); if (n === i) break; gone += this.heights[d > 0 ? i : n] ?? 40; i = n; }
+    while (gone < Math.abs(px)) { const n = this.move(i, d); if (n === i) break; gone += this.h(d > 0 ? i : n); i = n; }
     this.offset = this.clamp(this.offset + px); this.setCursor(i, cx); this.motion = 200;
   }
 
@@ -1706,7 +1786,7 @@ export default class Md extends View {
             .child(v_flex().id("md-col").w_full().max_w(MAX_W).px(PAD).pt(TOP).pb(80)
               .on_size_change((size, cx) => { const w = Math.max(120, size.width / Z() - PAD * 2); if (Math.abs(w - this.colW) > 1) { this.colW = w; this.resizeVideos(); cx.notify(); } }).font_family(BODY()).text_size(SIZE.body).line_height(1.65)
               .when(Boolean(this.error), el => el.child(div().text_color(t.blocked).child(this.error)))
-              .children(this.blocks.map((tok, i) => this.row(tok, i, t)))
+              .children(this.shownRows(t))
               .when(this.removed.has(this.blocks.length), el => el.child(this.removedMark(this.removed.get(this.blocks.length), t))))))
         .when(!this.file && !this.error, el => el.child(this.emptyState(t)))
         .when(thumbH > 0, el => el.child(div().absolute().right(3).w(6).rounded(3).bg(t.border).top(thumbY).h(thumbH).transition("top", { duration: this.motion, easing: "ease-out" })))
