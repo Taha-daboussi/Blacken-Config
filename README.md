@@ -1,34 +1,41 @@
-# herdr-config
+# Blacken-Config
 
-My settings for Herdr: the terminal app (`herdr`) and the desktop app (`herdr-app`).
+My settings, Claude Code parts, and workflows: Herdr (the terminal app `herdr` and the desktop app `herdr-app`), Claude Code hooks, and the `dispatch` workflow.
 
-## What is here
+## Layout
 
-- `herdr/` goes to `~/.config/herdr`
+```
+config/       app settings, copied to ~/.config
+claude/       Claude Code parts, copied to ~/.claude
+workflows/    Claude Code workflows, each with its own README and install.sh
+tools/        the repo scripts and the auto push units
+```
+
+- `config/herdr/` goes to `~/.config/herdr`
   - `config.toml`: keys, theme, sidebar, toast, worktrees
   - `scripts/confirm-close-pane.sh`: asks before a pane closes (`prefix+x`)
   - `plugins/config/`: settings for the plugins
   - `plugins.txt`: the plugin repos and the commit that I use
-- `herdr-app/` goes to `~/.config/herdr-app`
+- `config/herdr-app/` goes to `~/.config/herdr-app`
   - `settings.json`, `keys.json`, `programs.json`
   - `layouts/`: `main-drag` is the active layout
   - `themes/`
   - `mods/`: my own mods and mods that do not ship with Herdr
     - `agents-drag`, `pane-drag`, `tabs-drop`: drag an agent onto a tab to move it there
-    - `herdr-md`, `over9k-usage`, `revive`, `space-switcher`, `tmux-prefix`
-
-- `claude/` goes to `~/.claude`
-  - `hooks/session-namer.sh`: names each Claude Code session, for example `DAW-16 E2E test copytrade limit entry`. Herdr shows these names in the agents list.
-
-- `workflow/` holds Claude Code workflows. Each one has its own README and `install.sh`.
-  - `dispatch/`: one dispatcher session sends each task to a new Claude agent in the right herdr tab, with its own git worktree. The private repo rules stay in `~/.config/dispatch/overlays/`, not here.
+    - `herdr-md`, `linear`, `over9k-usage`, `revive`, `space-switcher`, `tmux-prefix`
+- `claude/hooks/session-namer.sh` goes to `~/.claude/hooks`. It names each Claude Code session, for example `DAW-16 E2E test copytrade limit entry`. Herdr shows these names in the agents list.
+- `workflows/dispatch/`: one dispatcher session sends each task to a new Claude agent in the right herdr tab, with its own git worktree. The private repo rules stay in `~/.config/dispatch/overlays/`, not here. See its README.
+- `tools/`
+  - `sync.sh`: copies the current settings into the repo
+  - `install.sh`: copies the repo settings onto a machine
+  - `autopush.sh` and `systemd/`: the auto push
 
 Not saved: logs, sockets, sessions, window state, telemetry, and the mods that ship with Herdr.
 
 ## Save the current settings
 
 ```sh
-./sync.sh
+tools/sync.sh
 git add -A && git commit -m "chore: sync settings" && git push
 ```
 
@@ -38,24 +45,26 @@ git add -A && git commit -m "chore: sync settings" && git push
 
 A systemd user service pushes each settings change to GitHub.
 
-- `herdr-config-autopush.path` starts the push a few seconds after a watched file or folder changes.
-- `herdr-config-autopush.timer` also runs it every 15 minutes. This catches changes inside mod folders.
+- `blacken-config-autopush.path` starts the push a few seconds after a watched file or folder changes.
+- `blacken-config-autopush.timer` also runs it every 15 minutes. This catches changes inside mod folders and in `workflows/`.
 - `autopush.sh` runs `sync.sh`, checks the new lines for secrets, commits, and pushes. If it finds a possible secret, it pushes nothing and shows a desktop alert.
 
-Turn it on:
+The service expects the repo at `~/Blacken-Config`. Turn it on:
 
 ```sh
-ln -sf "$PWD"/systemd/* ~/.config/systemd/user/
+ln -sf "$PWD"/tools/systemd/* ~/.config/systemd/user/
 systemctl --user daemon-reload
-systemctl --user enable --now herdr-config-autopush.path herdr-config-autopush.timer
+systemctl --user enable --now blacken-config-autopush.path blacken-config-autopush.timer
 ```
 
-See the log: `journalctl --user -u herdr-config-autopush.service`
+See the log: `journalctl --user -u blacken-config-autopush.service`
 
 ## Install on a new machine
 
-1. Install `herdr` and `herdr-app`.
-2. Run `./install.sh`. It makes a `.bak.<time>` copy of each settings file first.
-3. Install the plugins in `herdr/plugins.txt`.
-4. Add the session namer to `~/.claude/settings.json` as a `UserPromptSubmit` hook: `bash "$HOME/.claude/hooks/session-namer.sh"`.
-5. Restart `herdr-app`.
+1. Clone the repo to `~/Blacken-Config`.
+2. Install `herdr` and `herdr-app`.
+3. Run `tools/install.sh`. It makes a `.bak.<time>` copy of each settings file first.
+4. Install the plugins in `config/herdr/plugins.txt`.
+5. Add the session namer to `~/.claude/settings.json` as a `UserPromptSubmit` hook: `bash "$HOME/.claude/hooks/session-namer.sh"`.
+6. Optional: run `workflows/dispatch/install.sh`.
+7. Restart `herdr-app`.

@@ -1,0 +1,6 @@
+[Unit]
+Description=Push Herdr settings to the Blacken-Config GitHub repo
+
+[Service]
+Type=oneshot
+ExecStart=%h/Blacken-Config/tools/autopush.sh

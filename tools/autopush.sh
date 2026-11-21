@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
-repo="$(cd "$(dirname "$0")" && pwd)"
+repo="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$repo"
 
 fail() {
-  echo "herdr-config autopush: $1" >&2
-  notify-send -u critical "herdr-config autopush" "$1" 2>/dev/null || true
+  echo "blacken-config autopush: $1" >&2
+  notify-send -u critical "blacken-config autopush" "$1" 2>/dev/null || true
   exit 1
 }
 
 sleep "${AUTOPUSH_DELAY:-5}"
-./sync.sh >/dev/null || fail "sync.sh failed"
+./tools/sync.sh >/dev/null || fail "sync.sh failed"
 
 if [ -n "$(git status --porcelain)" ]; then
   git add -A
@@ -18,7 +18,7 @@ if [ -n "$(git status --porcelain)" ]; then
   if hits="$(git diff --cached -U0 | grep '^+' | grep -v '^+++' | grep -En "$pattern")"; then
     git reset -q
     echo "$hits" >&2
-    fail "possible secret in herdr config, nothing pushed. Check: git -C $repo diff"
+    fail "possible secret in Blacken-Config, nothing pushed. Check: git -C $repo diff"
   fi
   git commit -qm "chore: auto sync settings" || fail "git commit failed"
   echo "committed: $(git log -1 --stat --format=%h | tail -n +2 | tr '\n' ' ')"

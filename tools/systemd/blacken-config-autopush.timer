@@ -4,7 +4,7 @@ Description=Check Herdr settings every 15 minutes
 [Timer]
 OnBootSec=2min
 OnUnitActiveSec=15min
-Unit=herdr-config-autopush.service
+Unit=blacken-config-autopush.service
 
 [Install]
 WantedBy=timers.target

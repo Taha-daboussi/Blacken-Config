@@ -27,7 +27,7 @@ The skill here is generic. The rules of one repo (branch names, the gate, the te
 ## Install
 
 1. Install `herdr`, `herdr-app` (it gives `hc`), `claude`, `gh`, `jq`, and `git`.
-2. Run `./install.sh`. It links the skill, the scripts and the hook. It moves an existing file to `<file>.bak.<time>` first.
+2. Run `./install.sh`. It links the skill, the scripts and the hook. It moves an existing file to `~/.local/state/dispatch/install-backup/<time>/` first.
 3. Optional: add the `SessionStart` hook that `install.sh` prints.
 4. Optional: add a repo overlay from `overlays/example.md`.
 

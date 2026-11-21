@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-repo="$(cd "$(dirname "$0")" && pwd)"
+repo="$(cd "$(dirname "$0")/.." && pwd)"
 app="$HOME/.config/herdr-app"
 tui="$HOME/.config/herdr"
 stamp="$(date +%s)"
@@ -11,11 +11,11 @@ mkdir -p "$tui" "$app"
 backup "$tui/config.toml"
 for f in settings.json keys.json programs.json; do backup "$app/$f"; done
 
-rsync -a "$repo/herdr/config.toml" "$tui/"
-rsync -a "$repo/herdr/scripts/" "$tui/scripts/"
+rsync -a "$repo/config/herdr/config.toml" "$tui/"
+rsync -a "$repo/config/herdr/scripts/" "$tui/scripts/"
 mkdir -p "$tui/plugins"
-rsync -a "$repo/herdr/plugins/config/" "$tui/plugins/config/"
-rsync -a "$repo/herdr-app/" "$app/"
+rsync -a "$repo/config/herdr/plugins/config/" "$tui/plugins/config/"
+rsync -a "$repo/config/herdr-app/" "$app/"
 
 mkdir -p "$HOME/.claude/hooks"
 backup "$HOME/.claude/hooks/session-namer.sh"
@@ -29,4 +29,4 @@ if [ -d "$app/mods/herdr-md/render" ] && [ ! -d "$app/mods/herdr-md/render/node_
   (cd "$app/mods/herdr-md/render" && npm ci)
 fi
 echo "Installed. Plugins to install with herdr:"
-cat "$repo/herdr/plugins.txt"
+cat "$repo/config/herdr/plugins.txt"

@@ -1,6 +1,0 @@
-[Unit]
-Description=Push Herdr settings to the herdr-config GitHub repo
-
-[Service]
-Type=oneshot
-ExecStart=%h/herdr-config/autopush.sh

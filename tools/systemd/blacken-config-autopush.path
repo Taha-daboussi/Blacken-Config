@@ -11,7 +11,7 @@ PathModified=%h/.config/herdr-app/programs.json
 PathModified=%h/.config/herdr-app/layouts
 PathModified=%h/.config/herdr-app/themes
 PathModified=%h/.config/herdr-app/mods
-Unit=herdr-config-autopush.service
+Unit=blacken-config-autopush.service
 
 [Install]
 WantedBy=default.target
