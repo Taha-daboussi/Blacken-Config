@@ -27,6 +27,14 @@ Each file is in `~/.config/dispatch/<name>/`.
 | `review.md` | a review | Team review tool, Review rules, Hot spots |
 | `ship.md` | a PR, ready, merge, team posts | Team posts, Merge, Shared preview branch, PR rules |
 
+## Custom
+
+Niche jobs of this repo only (a chat bot to post in, a special test bot, a staging server, a mockup tool), one file per job in `custom/`. Leave this table empty when there are none. A standard chunk keeps one line that points to its custom file. Safety lines (never post in chat X, a money limit) also stay in "Always".
+
+| File | Read before |
+|---|---|
+| `custom/<job>.md` | <the work that needs it> |
+
 Learn files: `misses.md`, `misses/`, `evals/`.
 
 ## Extra instructions
