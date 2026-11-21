@@ -131,13 +131,14 @@ A UI change is a change that a user can see: a screen, a message, a button, a te
 1. Run the branch where BLACKFILE.md says the user tests. Keep it claimed until the end.
 2. End your turn with the test message below. Put nothing after it.
 3. Only a clear OK counts ("ok", "works", 👍). Answer each question in the same short style.
-4. A bug report: tell the user the cause and the fix you propose. Only when the user asks for the fix: send it to `dispatch-builder` (a screen bug: `model: "sonnet"`; a logic bug: the default), run the gate, a re-review of the fix commits, and push. Send a new test message with only what changed. Record each bug for the retro (`references/retro.md`).
+4. While the user tests, never change the branch: no edit, no commit, no merge of `main`, no push, unless the user asks (the user's rule, 2026-11-20). The merge of the newest `main` waits for step 10.1, and the test message says so in its last line: "After your OK: I merge the newest main, run the checks again, and send a new short test only when a screen you tested changes."
+5. A bug report: tell the user the cause and the fix you propose. Only when the user asks for the fix: send it to `dispatch-builder` (a screen bug: `model: "sonnet"`; a logic bug: the default), run the gate, a re-review of the fix commits, and push. Send a new test message with only what changed. Record each bug for the retro (`references/retro.md`).
 
 ## Step 10: Done
 
 `dispatch-step 10 done`
 
-1. Newest main before ready (retro 2026-11-21, PR #107: main added a check while the PR waited for the manual test). `git fetch origin`. When `origin/<default>` has commits that the branch does not have: merge it, run the gate and the scoped tests, push, and do step 0.4 of `references/review.md` for the new main commits only. When that list is not empty, start one `dispatch-reviewer`, role `finder A`, on the range `origin/<default>...HEAD` with the list. A P0 or P1: steps 2 to 4 of `references/review.md`, then (for a UI change) a new test message with only what changed (step 9).
+1. Newest main before ready (retro 2026-11-21, PR #107: main added a check while the PR waited for the manual test). `git fetch origin`. When `origin/<default>` has commits that the branch does not have: merge it, run the gate and the scoped tests, push, and do step 0.4 of `references/review.md` for the new main commits only. When that list is not empty, start one `dispatch-reviewer`, role `finder A`, on the range `origin/<default>...HEAD` with the list. A P0 or P1: steps 2 to 4 of `references/review.md`. For a UI change, when the merge or a fix changes a file that draws a screen the user tested, send a new short test message with only those screens (step 9) and wait for a new OK; else go on with no new test.
 2. `gh pr ready <PR>` (skip it when the PR is not a draft). Do the ready steps of BLACKFILE.md (for example a shared preview branch).
 3. `gh pr checks <PR> --watch`. Wait for the test check of BLACKFILE.md. When it shows `skipping`, no test ran: run the command again. A red check is a P1 (step 8.4).
 4. Merge when BLACKFILE.md "Merge" says so.
@@ -171,6 +172,7 @@ A UI change is a change that a user can see: a screen, a message, a button, a te
 ⚠️ Real money: <wallet, token, amount>   (only when a step trades)
 
 Draft PR: <link>
+After your OK: I merge the newest main, run the checks again, and send a new short test only when a screen you tested changes.
 Reply `ok` when it works, or tell me what is wrong.
 ```
 
