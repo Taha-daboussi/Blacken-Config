@@ -1,0 +1,193 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat >&2 <<'EOF'
+dispatch: start a Claude agent for one task in the right herdr tab of this space.
+
+Usage:
+  dispatch --type bug|feature|e2e|review|manual|monitor --name <slug> (--prompt <text> | --prompt-file <file>)
+           [--branch <new-branch> | --on <branch> | --pr <number> | --no-worktree] [--repo <path>] [--space <id>]
+
+  --type      bug -> Bugs, feature -> Features, e2e -> E2E, review -> Reviews, manual -> Manual Test, monitor -> Monitors
+  --name      short pane name: daw-123, pr-62, prod-logs (a-z 0-9 - _)
+  --branch    new worktree on a new branch from origin's default branch (bug, feature)
+  --on        worktree on an existing pushed branch (e2e, review before the PR exists, manual)
+  --pr        worktree on the head branch of that PR (review, manual); detached for a PR from a fork
+  --no-worktree  run in the repo's main checkout (default for monitor)
+  --repo      repo path (default: the git repo of the current folder)
+  --space     herdr space id (default: the space of the calling terminal)
+
+Env: DISPATCH_MAX_PANES (default 4) panes per tab before "Bugs 2" opens.
+Agent command: "<YYYY-MM-DD> <command>" in $XDG_RUNTIME_DIR/dispatch-<space>.agent starts the agents
+of that space with <command> (for example claudet) on that day only. Default: claude.
+EOF
+  exit 2
+}
+
+die() { echo "dispatch: $*" >&2; exit 1; }
+
+type= name= prompt= prompt_file= branch= on= pr= no_wt= repo= space=
+while (($#)); do
+  case $1 in
+    --type) type=$2; shift 2 ;;
+    --name) name=$2; shift 2 ;;
+    --prompt) prompt=$2; shift 2 ;;
+    --prompt-file) prompt_file=$2; shift 2 ;;
+    --branch) branch=$2; shift 2 ;;
+    --on) on=$2; shift 2 ;;
+    --pr) pr=$2; shift 2 ;;
+    --no-worktree) no_wt=1; shift ;;
+    --repo) repo=$2; shift 2 ;;
+    --space) space=$2; shift 2 ;;
+    -h|--help) usage ;;
+    *) die "unknown argument: $1" ;;
+  esac
+done
+
+case $type in
+  bug) base=Bugs ;;
+  feature) base=Features ;;
+  e2e) base=E2E ;;
+  review) base=Reviews ;;
+  manual) base="Manual Test" ;;
+  monitor) base=Monitors ;;
+  *) usage ;;
+esac
+[[ $name =~ ^[a-z0-9_-]{1,28}$ ]] || die "--name must be 1-28 of a-z 0-9 - _"
+[[ -n $prompt_file ]] && prompt=$(<"$prompt_file")
+[[ -n $prompt ]] || die "give --prompt or --prompt-file"
+picked=0
+for opt in "$branch" "$on" "$pr" "$no_wt"; do [[ -n $opt ]] && picked=$((picked + 1)); done
+((picked <= 1)) || die "use only one of --branch, --on, --pr, --no-worktree"
+max_panes=${DISPATCH_MAX_PANES:-4}
+
+if [[ -z $space ]]; then
+  [[ -n ${HC_TERMINAL_ID:-} ]] || die "not in a herdr terminal; pass --space"
+  space=$(hc get "$HC_TERMINAL_ID" | jq -r '.labels["herdr.space"] // empty')
+  [[ -n $space ]] || die "terminal $HC_TERMINAL_ID has no herdr.space label; pass --space"
+fi
+
+main_checkout=
+if [[ -n $repo ]] || git rev-parse --git-dir >/dev/null 2>&1; then
+  common=$(git -C "${repo:-.}" rev-parse --path-format=absolute --git-common-dir)
+  main_checkout=$(dirname "$common")
+fi
+
+cwd=${main_checkout:-$PWD}
+wt_note=
+if [[ -n $branch || -n $on || -n $pr ]]; then
+  [[ -n $main_checkout ]] || die "not in a git repo; pass --repo"
+  git -C "$main_checkout" fetch --quiet origin
+  default=$(git -C "$main_checkout" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null || true)
+  [[ -n $default ]] || default=origin/$(gh -R "$(git -C "$main_checkout" remote get-url origin)" repo view --json defaultBranchRef -q .defaultBranchRef.name)
+  if [[ -n $branch ]]; then
+    slug=${branch#*/}
+    slug=${slug//\//-}
+  elif [[ -n $on ]]; then
+    slug=${on#*/}
+    slug=${slug//\//-}-$type
+  else
+    slug=pr-$pr-$type
+  fi
+  cwd=$(dirname "$main_checkout")/$(basename "$main_checkout")-$slug
+  [[ ! -e $cwd ]] || die "$cwd already exists"
+  if [[ -n $branch ]]; then
+    git -C "$main_checkout" worktree add --quiet -b "$branch" "$cwd" "$default"
+    wt_note="Your git worktree is ready: $cwd, on the new branch $branch from $default. Work only there. Do not create another worktree or branch for this task."
+  elif [[ -n $on ]]; then
+    git -C "$main_checkout" show-ref --verify --quiet "refs/remotes/origin/$on" || die "branch $on is not on origin; push it first"
+    if git -C "$main_checkout" show-ref --verify --quiet "refs/heads/$on"; then
+      git -C "$main_checkout" merge-base --is-ancestor "refs/heads/$on" "refs/remotes/origin/$on" || die "local $on has commits that origin/$on does not; push them first"
+      git -C "$main_checkout" worktree add --quiet "$cwd" "$on" || die "cannot check out $on; another worktree may hold it"
+      git -C "$cwd" merge --quiet --ff-only "origin/$on"
+    else
+      git -C "$main_checkout" worktree add --quiet --track -b "$on" "$cwd" "origin/$on"
+    fi
+    wt_note="Your git worktree is ready: $cwd, on the existing branch $on (tracks origin/$on). Work only there. Do not create another worktree or branch for this task."
+  else
+    info=$(gh -R "$(git -C "$main_checkout" remote get-url origin)" pr view "$pr" --json headRefName,isCrossRepository,author)
+    head=$(jq -r .headRefName <<<"$info")
+    author=$(jq -r .author.login <<<"$info")
+    me=$(gh api user -q .login)
+    if [[ $(jq -r .isCrossRepository <<<"$info") == true ]]; then
+      git -C "$main_checkout" fetch --quiet origin "pull/$pr/head"
+      git -C "$main_checkout" worktree add --quiet --detach "$cwd" FETCH_HEAD
+      wt_note="Your git worktree is ready: $cwd, detached at the head of PR #$pr (a PR from a fork). Work only there. PR author: $author. You (gh): $me."
+    else
+      git -C "$main_checkout" fetch --quiet origin "$head"
+      if git -C "$main_checkout" show-ref --verify --quiet "refs/heads/$head"; then
+        git -C "$main_checkout" worktree add --quiet "$cwd" "$head"
+      else
+        git -C "$main_checkout" worktree add --quiet --track -b "$head" "$cwd" "origin/$head"
+      fi
+      wt_note="Your git worktree is ready: $cwd, on the PR #$pr branch $head (tracks origin/$head). Work only there. Do not create another worktree or branch for this task. PR author: $author. You (gh): $me."
+    fi
+  fi
+fi
+
+full_prompt=$prompt
+[[ -n $wt_note ]] && full_prompt="$wt_note
+
+$prompt"
+
+lock=${XDG_RUNTIME_DIR:-/tmp}/dispatch-$space.lock
+exec 9>"$lock"
+flock 9
+
+tree=$(herdr-app ls)
+jq -e --arg sp "$space" '.spaces[] | select(.id == $sp)' <<<"$tree" >/dev/null || die "space $space is not open in herdr"
+
+tab=$(jq -r --arg sp "$space" --arg base "$base" --argjson max "$max_panes" '
+  .spaces[] | select(.id == $sp) | .tabs[]
+  | select(.name | test("^" + $base + "( [0-9]+)?$"))
+  | select((.terminals | length) < $max) | .id' <<<"$tree" | head -n1)
+
+tab_name=
+if [[ -z $tab ]]; then
+  taken=$(jq -r --arg sp "$space" '.spaces[] | select(.id == $sp) | .tabs[].name' <<<"$tree")
+  tab_name=$base
+  n=2
+  while grep -qxF "$tab_name" <<<"$taken"; do tab_name="$base $n"; n=$((n + 1)); done
+  tab=tb$(head -c16 /dev/urandom | od -An -tx1 | tr -d ' \n')
+else
+  tab_name=$(jq -r --arg sp "$space" --arg tb "$tab" '.spaces[] | select(.id == $sp) | .tabs[] | select(.id == $tb) | .name' <<<"$tree")
+fi
+
+term_name=$name
+live=$(hc ls | jq -r '.terminals[] | select(.state == "live") | .name // empty')
+n=2
+while grep -qxF "$term_name" <<<"$live"; do term_name="$name-$n"; n=$((n + 1)); done
+
+agent_cmd=claude
+agent_override=${XDG_RUNTIME_DIR:-/tmp}/dispatch-$space.agent
+if [[ -r $agent_override ]]; then
+  read -r agent_day agent_alt _ <"$agent_override" || true
+  if [[ ${agent_day:-} == "$(date +%F)" && -n ${agent_alt:-} ]]; then agent_cmd=$agent_alt; fi
+fi
+
+shell=$(command -v zsh || command -v bash)
+started=$(hc run --bg --json --keep --no-parent --cwd "$cwd" --name "$term_name" \
+  --label "herdr.space=$space" --label "herdr.tab=$tab" --label "dispatch.agent=1" \
+  -- "$shell" -ic '"$@"; exec "$0" -i' "$shell" "$agent_cmd" "$full_prompt")
+terminal=$(jq -r .address <<<"$started")
+
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  herdr-app ls | jq -e --arg tb "$tab" '.spaces[].tabs[] | select(.id == $tb)' >/dev/null && break
+  sleep 0.3
+done
+current=$(herdr-app ls | jq -r --arg tb "$tab" '.spaces[].tabs[] | select(.id == $tb) | .name')
+[[ -n $current ]] || die "terminal $terminal started, but tab $tab did not show up"
+[[ $current == "$tab_name" ]] || herdr-app do tab.rename --id "$tab" --name "$tab_name" >/dev/null
+
+exec 9>&-
+
+jq -n --arg tab "$tab_name" --arg tab_id "$tab" --arg terminal "$terminal" --arg name "$term_name" \
+  --arg cwd "$cwd" --arg branch "${branch:-$on}" --arg pr "$pr" \
+  '{tab: $tab, tab_id: $tab_id, terminal: $terminal, name: $name, cwd: $cwd}
+   + (if $branch != "" then {branch: $branch} else {} end)
+   + (if $pr != "" then {pr: $pr} else {} end)'
+
+if [[ -n ${HC_TERMINAL_ID:-} ]] && hc get "$HC_TERMINAL_ID" 2>/dev/null | jq -e '.labels["dispatch.agent"] == "1"' >/dev/null; then
+  echo "dispatch: hand-off done. Your step ends now: close your browser tabs, put your final report on the screen, then run dispatch-close as your last command (section 7 of the dispatch skill)." >&2
+fi

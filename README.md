@@ -20,6 +20,9 @@ My settings for Herdr: the terminal app (`herdr`) and the desktop app (`herdr-ap
 - `claude/` goes to `~/.claude`
   - `hooks/session-namer.sh`: names each Claude Code session, for example `DAW-16 E2E test copytrade limit entry`. Herdr shows these names in the agents list.
 
+- `workflow/` holds Claude Code workflows. Each one has its own README and `install.sh`.
+  - `dispatch/`: one dispatcher session sends each task to a new Claude agent in the right herdr tab, with its own git worktree. The private repo rules stay in `~/.config/dispatch/overlays/`, not here.
+
 Not saved: logs, sockets, sessions, window state, telemetry, and the mods that ship with Herdr.
 
 ## Save the current settings
