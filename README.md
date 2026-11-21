@@ -24,7 +24,7 @@ tools/        the repo scripts and the auto push units
     - `agents-drag`, `pane-drag`, `tabs-drop`: drag an agent onto a tab to move it there
     - `herdr-md`, `linear`, `over9k-usage`, `revive`, `space-switcher`, `tmux-prefix`
 - `claude/hooks/session-namer.sh` goes to `~/.claude/hooks`. It names each Claude Code session, for example `DAW-16 E2E test copytrade limit entry`. Herdr shows these names in the agents list.
-- `workflows/dispatch/`: one dispatcher session sends each task to a new Claude agent in the right herdr tab, with its own git worktree. The private repo rules stay in `~/.config/dispatch/overlays/`, not here. See its README.
+- `workflows/dispatch/`: one dispatcher session sends each task to one Claude pane in the right herdr tab, with its own git worktree; the pane runs the whole pipeline with role sub-agents. The private project files stay in `~/.config/dispatch/<repo>/BLACKFILE.md`, not here. See its README.
 - `tools/`
   - `sync.sh`: copies the current settings into the repo
   - `install.sh`: copies the repo settings onto a machine

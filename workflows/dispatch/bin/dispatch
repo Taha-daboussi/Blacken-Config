@@ -3,18 +3,21 @@ set -euo pipefail
 
 usage() {
   cat >&2 <<'EOF'
-dispatch: start a Claude agent for one task in the right herdr tab of this space.
+dispatch: start one Claude pane for one task in the right herdr tab of this space.
+The pane runs the whole pipeline of the dispatch skill (references/pipeline.md).
 
 Usage:
-  dispatch --type bug|feature|e2e|review|manual|monitor --name <slug> (--prompt <text> | --prompt-file <file>)
-           [--branch <new-branch> | --on <branch> | --pr <number> | --no-worktree] [--repo <path>] [--space <id>]
+  dispatch --type bug|feature|review|feedback|retro|monitor|init --name <slug> (--prompt <text> | --prompt-file <file>)
+           [--branch <new-branch> | --on <branch> | --pr <number> | --no-worktree] [--plan | --no-plan]
+           [--repo <path>] [--space <id>]
 
-  --type      bug -> Bugs, feature -> Features, e2e -> E2E, review -> Reviews, manual -> Manual Test, monitor -> Monitors
+  --type      bug -> Bugs, feature -> Features, review|feedback|retro -> Reviews, monitor -> Monitors, init -> Setup
   --name      short pane name: daw-123, pr-62, prod-logs (a-z 0-9 - _)
   --branch    new worktree on a new branch from origin's default branch (bug, feature)
-  --on        worktree on an existing pushed branch (e2e, review before the PR exists, manual)
-  --pr        worktree on the head branch of that PR (review, manual); detached for a PR from a fork
-  --no-worktree  run in the repo's main checkout (default for monitor)
+  --on        worktree on an existing pushed branch (bug or feature on an owner branch)
+  --pr        worktree on the head branch of that PR (review, feedback); detached for a PR from a fork
+  --no-worktree  run in the repo's main checkout (default for monitor, retro, init)
+  --plan, --no-plan  force or skip the plan step (default: the size rules of references/planning.md)
   --repo      repo path (default: the git repo of the current folder)
   --space     herdr space id (default: the space of the calling terminal)
 
@@ -27,7 +30,7 @@ EOF
 
 die() { echo "dispatch: $*" >&2; exit 1; }
 
-type= name= prompt= prompt_file= branch= on= pr= no_wt= repo= space=
+type= name= prompt= prompt_file= branch= on= pr= no_wt= repo= space= plan=
 while (($#)); do
   case $1 in
     --type) type=$2; shift 2 ;;
@@ -38,6 +41,8 @@ while (($#)); do
     --on) on=$2; shift 2 ;;
     --pr) pr=$2; shift 2 ;;
     --no-worktree) no_wt=1; shift ;;
+    --plan) plan=--plan; shift ;;
+    --no-plan) plan=--no-plan; shift ;;
     --repo) repo=$2; shift 2 ;;
     --space) space=$2; shift 2 ;;
     -h|--help) usage ;;
@@ -45,13 +50,16 @@ while (($#)); do
   esac
 done
 
+skill=$HOME/.claude/skills/dispatch
 case $type in
-  bug) base=Bugs ;;
-  feature) base=Features ;;
-  e2e) base=E2E ;;
-  review) base=Reviews ;;
-  manual) base="Manual Test" ;;
-  monitor) base=Monitors ;;
+  bug) base=Bugs; guide=references/pipeline.md ;;
+  feature) base=Features; guide=references/pipeline.md ;;
+  review) base=Reviews; guide=references/review.md ;;
+  feedback) base=Reviews; guide=references/feedback.md ;;
+  retro) base=Reviews; guide=references/retro.md ;;
+  monitor) base=Monitors; guide= ;;
+  init) base=Setup; guide=references/init.md ;;
+  e2e|manual) die "type $type is gone: the task pane runs e2e and the manual test itself (references/pipeline.md)" ;;
   *) usage ;;
 esac
 [[ $name =~ ^[a-z0-9_-]{1,28}$ ]] || die "--name must be 1-28 of a-z 0-9 - _"
@@ -60,6 +68,12 @@ esac
 picked=0
 for opt in "$branch" "$on" "$pr" "$no_wt"; do [[ -n $opt ]] && picked=$((picked + 1)); done
 ((picked <= 1)) || die "use only one of --branch, --on, --pr, --no-worktree"
+if ((picked == 0)); then
+  case $type in
+    monitor|retro|init) no_wt=1 ;;
+    *) die "give one of --branch, --on, --pr, --no-worktree" ;;
+  esac
+fi
 max_panes=${DISPATCH_MAX_PANES:-4}
 
 if [[ -z $space ]]; then
@@ -73,6 +87,13 @@ if [[ -n $repo ]] || git rev-parse --git-dir >/dev/null 2>&1; then
   common=$(git -C "${repo:-.}" rev-parse --path-format=absolute --git-common-dir)
   main_checkout=$(dirname "$common")
 fi
+
+repo_name=$(basename "${main_checkout:-$PWD}")
+blackfile=${XDG_CONFIG_HOME:-$HOME/.config}/dispatch/$repo_name/BLACKFILE.md
+case $type in
+  monitor|init) ;;
+  *) [[ -r $blackfile ]] || die "no $blackfile; run: dispatch --type init --name init --prompt 'Set up BLACKFILE.md: read ~/.claude/skills/dispatch/references/init.md and follow it.'" ;;
+esac
 
 cwd=${main_checkout:-$PWD}
 wt_note=
@@ -126,8 +147,21 @@ if [[ -n $branch || -n $on || -n $pr ]]; then
   fi
 fi
 
-full_prompt=$prompt
-[[ -n $wt_note ]] && full_prompt="$wt_note
+task_slug=${slug:-$name}
+task_dir=${XDG_DATA_HOME:-$HOME/.local/share}/dispatch/$repo_name-$task_slug
+mkdir -p "$task_dir"
+
+head="You are a dispatch task pane (type: $type). Dispatch is done: do not run /dispatch for this task."
+[[ -n $guide ]] && head="$head
+Steps: read $skill/$guide and follow it. Run \`dispatch\` only where that file says so."
+[[ -r $blackfile ]] && head="$head
+Project file: $blackfile. Read it first. It wins over the skill files where they differ."
+head="$head
+Task folder: $task_dir.${plan:+
+Plan flag: $plan.}"
+[[ -n $wt_note ]] && head="$wt_note
+$head"
+full_prompt="$head
 
 $prompt"
 
@@ -169,7 +203,7 @@ fi
 shell=$(command -v zsh || command -v bash)
 started=$(hc run --bg --json --keep --no-parent --cwd "$cwd" --name "$term_name" \
   --label "herdr.space=$space" --label "herdr.tab=$tab" --label "dispatch.agent=1" \
-  -- "$shell" -ic '"$@"; exec "$0" -i' "$shell" "$agent_cmd" "$full_prompt")
+  -- "$shell" -ic '"$@"; exec "$0" -i' "$shell" env "DISPATCH_TASK_DIR=$task_dir" "DISPATCH_TYPE=$type" "$agent_cmd" "$full_prompt")
 terminal=$(jq -r .address <<<"$started")
 
 for _ in 1 2 3 4 5 6 7 8 9 10; do
@@ -183,11 +217,11 @@ current=$(herdr-app ls | jq -r --arg tb "$tab" '.spaces[].tabs[] | select(.id ==
 exec 9>&-
 
 jq -n --arg tab "$tab_name" --arg tab_id "$tab" --arg terminal "$terminal" --arg name "$term_name" \
-  --arg cwd "$cwd" --arg branch "${branch:-$on}" --arg pr "$pr" \
-  '{tab: $tab, tab_id: $tab_id, terminal: $terminal, name: $name, cwd: $cwd}
+  --arg cwd "$cwd" --arg branch "${branch:-$on}" --arg pr "$pr" --arg task_dir "$task_dir" \
+  '{tab: $tab, tab_id: $tab_id, terminal: $terminal, name: $name, cwd: $cwd, task_dir: $task_dir}
    + (if $branch != "" then {branch: $branch} else {} end)
    + (if $pr != "" then {pr: $pr} else {} end)'
 
 if [[ -n ${HC_TERMINAL_ID:-} ]] && hc get "$HC_TERMINAL_ID" 2>/dev/null | jq -e '.labels["dispatch.agent"] == "1"' >/dev/null; then
-  echo "dispatch: hand-off done. Your step ends now: close your browser tabs, put your final report on the screen, then run dispatch-close as your last command (section 7 of the dispatch skill)." >&2
+  echo "dispatch: started pane $term_name for that task. It runs on its own; continue your own steps." >&2
 fi

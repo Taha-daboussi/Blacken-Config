@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+input=$(cat)
+path=$(jq -r '.tool_input.file_path // .tool_input.notebook_path // empty' <<<"$input")
+[[ -n $path ]] || exit 0
+[[ $(basename "$path") == expected.md ]] || exit 0
+case $path in
+  */.local/share/dispatch/*|"${DISPATCH_TASK_DIR:-/nonexistent}"/*)
+    echo "expected.md is the target of this task and only dispatch-spec writes it. Stop and return the line that you think is wrong, with its source." >&2
+    exit 2 ;;
+esac
+exit 0

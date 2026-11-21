@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat >&2 <<'U'
+dispatch-step: record the pipeline step of this dispatch pane.
+
+  dispatch-step <n> <label> [--wait "<what you need from the user>"]
+  dispatch-step --summary [task_dir]
+  dispatch-step --show
+
+It writes $XDG_RUNTIME_DIR/dispatch-state/<terminal>.json (the footer reads it),
+sets the herdr labels dispatch.step and dispatch.wait, appends to <task_dir>/steps.tsv,
+and with --wait sends one claude-tg ping (only when the wait text changes).
+Env: HC_TERMINAL_ID (herdr), DISPATCH_TASK_DIR (set by dispatch).
+U
+  exit 2
+}
+
+state_dir=${XDG_RUNTIME_DIR:-/tmp}/dispatch-state
+term=${HC_TERMINAL_ID:-}
+task_dir=${DISPATCH_TASK_DIR:-}
+
+summary() {
+  local dir=${1:-$task_dir} f
+  f=$dir/steps.tsv
+  [[ -r $f ]] || { echo "dispatch-step: no $f" >&2; exit 1; }
+  awk -v now="$(date +%s)" -F'\t' '
+    { t[NR] = $1; s[NR] = $2 " " $3; w[NR] = $4 }
+    END {
+      for (i = 1; i <= NR; i++) {
+        e = (i < NR) ? t[i + 1] : now
+        k = s[i] (w[i] == "1" ? " (wait)" : "")
+        if (!(k in sec)) order[++n] = k
+        sec[k] += e - t[i]
+      }
+      for (i = 1; i <= n; i++) printf "%-28s %4d min\n", order[i], int(sec[order[i]] / 60 + 0.5)
+    }' "$f"
+}
+
+case ${1:-} in
+  ""|-h|--help) usage ;;
+  --summary) summary "${2:-}"; exit ;;
+  --show) [[ -n $term && -r $state_dir/$term.json ]] && cat "$state_dir/$term.json"; exit ;;
+esac
+
+n=$1 label=${2:-}
+[[ $n =~ ^[0-9]{1,2}$ && -n $label ]] || usage
+shift 2
+wait_msg=
+while (($#)); do
+  case $1 in
+    --wait) wait_msg=${2:-waiting}; shift 2 ;;
+    *) usage ;;
+  esac
+done
+waiting=0
+[[ -n $wait_msg ]] && waiting=1
+
+[[ -n $term ]] || { echo "dispatch-step: not in a herdr terminal (HC_TERMINAL_ID unset); step $n $label not recorded" >&2; exit 0; }
+mkdir -p "$state_dir"
+file=$state_dir/$term.json
+prev_msg=$(jq -r '.wait_msg // ""' "$file" 2>/dev/null || true)
+
+name=$(hc get "$term" 2>/dev/null | jq -r '.name // empty' || true)
+tmp=$(mktemp "$state_dir/.XXXXXX")
+jq -n --argjson n "$n" --arg label "$label" --argjson waiting "$waiting" --arg wait_msg "$wait_msg" \
+  --arg task_dir "$task_dir" --arg name "$name" --argjson since "$(date +%s)" \
+  '{n: $n, label: $label, waiting: ($waiting == 1), wait_msg: $wait_msg, task_dir: $task_dir, name: $name, since: $since}' >"$tmp"
+mv "$tmp" "$file"
+
+if [[ -n $task_dir && -d $task_dir ]]; then
+  printf '%s\t%s\t%s\t%s\n' "$(date +%s)" "$n" "$label" "$waiting" >>"$task_dir/steps.tsv"
+fi
+
+hc label "$term" "dispatch.step=$n/10 $label" "dispatch.wait=$waiting" >/dev/null 2>&1 \
+  || echo "dispatch-step: hc label failed for $term" >&2
+
+if ((waiting)) && [[ $wait_msg != "$prev_msg" ]]; then
+  repo=$(basename "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || echo /none/x)")")
+  if command -v claude-tg >/dev/null; then
+    claude-tg -t info -r "$repo" "⏳ ${name:-$term} waits for you (step $n $label): $wait_msg" >/dev/null \
+      || echo "dispatch-step: claude-tg ping failed; tell the user on the screen" >&2
+  else
+    echo "dispatch-step: claude-tg not installed; no ping sent" >&2
+  fi
+fi
+echo "dispatch-step: $n/10 $label$( ((waiting)) && echo " (waiting: $wait_msg)")"

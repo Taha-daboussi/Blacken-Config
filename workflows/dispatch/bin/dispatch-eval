@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat >&2 <<'U'
+dispatch-eval: prepare and record the eval cases of the dispatch learn loop.
+
+  dispatch-eval <repo> <id>|--all              make a detached worktree at each case commit (a review case also merges its base,
+                                               like review step 0), print the jobs (JSON lines)
+  dispatch-eval <repo> --record <id> caught|missed [note]   write the result into the case and the miss file
+  dispatch-eval <repo> --cleanup <id>|--all    remove the eval worktrees
+
+The pane reads each job and starts the sub-agent that the job names (references/retro.md).
+Cases: ~/.config/dispatch/<repo>/evals/<id>.md. The main checkout comes from BLACKFILE.md ("Main checkout:").
+U
+  exit 2
+}
+die() { echo "dispatch-eval: $*" >&2; exit 1; }
+
+(($# >= 2)) || usage
+repo=$1; shift
+cfg=${XDG_CONFIG_HOME:-$HOME/.config}/dispatch/$repo
+[[ -d $cfg/evals ]] || die "no eval cases in $cfg/evals"
+main=$(sed -nE 's/.*Main checkout: `?([^` .]+)`?.*/\1/p' "$cfg/BLACKFILE.md" 2>/dev/null | head -n1)
+main=${main/#\~/$HOME}
+[[ -n $main && -d $main ]] || die "no 'Main checkout:' path in $cfg/BLACKFILE.md"
+
+field() { sed -n '/^---$/,/^---$/p' "$1" | sed -nE "s/^$2:[[:space:]]*(.*)$/\1/p" | head -n1; }
+ids() { if [[ $1 == --all ]]; then for f in "$cfg"/evals/*.md; do basename "$f" .md; done; else echo "$1"; fi; }
+wt_of() { echo "$(dirname "$main")/$(basename "$main")-eval-$1"; }
+
+case $1 in
+  --record)
+    id=${2:?id}; res=${3:?caught or missed}; note=${4:-}
+    [[ $res == caught || $res == missed ]] || usage
+    f=$cfg/evals/$id.md; [[ -f $f ]] || die "no case $id"
+    printf '\n## Result %s\n\n- %s%s\n' "$(date +%F)" "$res" "${note:+: $note}" >>"$f"
+    m=$cfg/misses/$id.md
+    [[ -f $m ]] && printf '\n- Eval %s: %s%s\n' "$(date +%F)" "$res" "${note:+: $note}" >>"$m"
+    echo "dispatch-eval: $id $res"
+    ;;
+  --cleanup)
+    for id in $(ids "${2:?id or --all}"); do
+      wt=$(wt_of "$id")
+      [[ -d $wt ]] && git -C "$main" worktree remove --force "$wt" && echo "removed $wt"
+    done
+    ;;
+  *)
+    git -C "$main" fetch --quiet origin
+    for id in $(ids "$1"); do
+      f=$cfg/evals/$id.md; [[ -f $f ]] || die "no case $id"
+      commit=$(field "$f" commit); step=$(field "$f" step); base=$(field "$f" base)
+      [[ $commit =~ ^[0-9a-f]{7,40}$ ]] || die "$id: no commit sha in the front matter"
+      wt=$(wt_of "$id")
+      if [[ ! -d $wt ]]; then
+        git -C "$main" cat-file -e "$commit^{commit}" 2>/dev/null || git -C "$main" fetch --quiet origin "$commit" \
+          || die "$id: commit $commit not found"
+        git -C "$main" worktree add --quiet --detach "$wt" "$commit"
+        if [[ $step == review && -n $base ]]; then
+          git -C "$wt" -c user.name=dispatch-eval -c user.email=eval@localhost merge --quiet --no-edit "$base" \
+            || die "$id: the merge of $base into $commit has conflicts; resolve them in $wt or record the case as not runnable"
+        fi
+      fi
+      range=
+      [[ -n $base ]] && range="$base...HEAD"
+      role=$(field "$f" role)
+      jq -cn --arg id "$id" --arg step "$step" --arg worktree "$wt" --arg range "$range" --arg role "$role" --arg case "$f" \
+        --arg blackfile "$cfg/BLACKFILE.md" \
+        '{id: $id, step: $step, role: $role, worktree: $worktree, range: $range, case: $case, blackfile: $blackfile}'
+    done
+    ;;
+esac

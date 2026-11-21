@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat >&2 <<'U'
+dispatch-pr-overlap: list the other open PRs whose added lines use a function that this branch changed or added.
+
+  dispatch-pr-overlap [--base <ref>] [--prs "<n> <n> ..."]
+
+Run it in the task worktree. Default base: origin/<default>. Default PRs: every open PR of the repo, except the PR
+of the current branch. Prints one line per hit: PR #<n> <file>:<added line> uses <name>. Prints nothing when there is
+no hit. It is a script check: no model decides anything (references/pipeline.md, step 8).
+U
+  exit 2
+}
+die() { echo "dispatch-pr-overlap: $*" >&2; exit 1; }
+
+base= prs=
+while (($#)); do
+  case $1 in
+    --base) base=$2; shift 2 ;;
+    --prs) prs=$2; shift 2 ;;
+    -h|--help) usage ;;
+    *) usage ;;
+  esac
+done
+
+git rev-parse --git-dir >/dev/null 2>&1 || die "not in a git repo"
+if [[ -z $base ]]; then
+  base=$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null) || die "no origin/HEAD; pass --base"
+fi
+branch=$(git branch --show-current || true)
+
+names=$(git diff -U0 "$base...HEAD" | grep -E '^[+-][^+-]' | sed -nE \
+  -e 's/^[+-]func (\([^)]*\) )?([A-Za-z_][A-Za-z0-9_]*).*/\2/p' \
+  -e 's/^[+-][[:space:]]*(export )?(async )?function\*? ?([A-Za-z_$][A-Za-z0-9_$]*).*/\3/p' \
+  -e 's/^[+-][[:space:]]*(export )?const ([A-Za-z_$][A-Za-z0-9_$]*) = (async )?(\(|function).*/\2/p' \
+  -e 's/^[+-][[:space:]]*(async )?def ([A-Za-z_][A-Za-z0-9_]*).*/\2/p' \
+  | awk 'length($0) >= 4' | sort -u)
+[[ -n $names ]] || exit 0
+
+if [[ -z $prs ]]; then
+  prs=$(gh pr list --state open --limit 100 --json number,headRefName \
+    -q ".[] | select(.headRefName != \"$branch\") | .number") || die "gh pr list failed"
+fi
+
+pattern=$(printf '%s\n' "$names" | paste -sd'|')
+for n in $prs; do
+  diff=$(gh pr diff "$n" 2>/dev/null) || { echo "dispatch-pr-overlap: gh pr diff $n failed" >&2; continue; }
+  awk -v pr="$n" -v pat="$pattern" '
+    /^\+\+\+ b\// { file = substr($0, 7); next }
+    /^\+/ && !/^\+\+\+/ {
+      line = substr($0, 2)
+      if (match(line, "(^|[^A-Za-z0-9_$])(" pat ")[[:space:]]*\\(")) {
+        hit = substr(line, RSTART, RLENGTH); gsub(/^[^A-Za-z_$]|[[:space:]]*\($/, "", hit)
+        gsub(/^[[:space:]]+/, "", line)
+        printf "PR #%s %s: uses %s: %s\n", pr, file, hit, substr(line, 1, 120)
+      }
+    }' <<<"$diff"
+done
