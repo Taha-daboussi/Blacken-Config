@@ -155,7 +155,7 @@ head="You are a dispatch task pane (type: $type). Dispatch is done: do not run /
 [[ -n $guide ]] && head="$head
 Steps: read $skill/$guide and follow it. Run \`dispatch\` only where that file says so."
 [[ -r $blackfile ]] && head="$head
-Project file: $blackfile. Read it first. It wins over the skill files where they differ."
+Project file: $blackfile (an index). Read it first, then each chunk that its table names for a step, before that step. It wins over the skill files where they differ."
 head="$head
 Task folder: $task_dir.${plan:+
 Plan flag: $plan.}"

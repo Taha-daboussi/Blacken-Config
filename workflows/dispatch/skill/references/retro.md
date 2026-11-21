@@ -28,7 +28,7 @@ A **miss** is a problem that a person found after a pipeline step said "done" fo
 3. For each result, run the proof: `dispatch-eval <repo> <id>` (below). When the changed step does not catch the miss, send that result back to the same retro agent for the next kind of mitigation. Stop after kind 3; kind 4 needs no proof.
 4. Show the user each mitigation in 3 lines (the step, the cause, the change) and ask yes or no for each one (`--wait`). The user's rule: never add or change a rule without asking.
 5. On yes:
-   - a BLACKFILE.md line: add it to the section that the retro names, with its source;
+   - a BLACKFILE.md line: add it to the section that the retro names, in the chunk that the index table lists for that section, with its source. Add it to the index only when it is an "Always" rule, and keep the index under 3,000 characters;
    - a change to the skill, an agent, or a script for every repo: commit it on a branch of Blacken-Config (`git worktree add -b fix/dispatch-<slug> ../Blacken-Config-<slug> origin/main`), and tell the user the branch;
    - a check for one repo (a lint rule, a CI step, a test): start `dispatch --type feature` for it, with the miss file as the spec.
 6. Add one line to `~/.config/dispatch/<repo>/misses.md` for each miss (below), also on a no.

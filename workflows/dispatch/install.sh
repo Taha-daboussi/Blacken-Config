@@ -46,4 +46,5 @@ for old in "$config"/overlays/*.md; do
   r=$(basename "$old" .md)
   [ -e "$config/$r/BLACKFILE.md" ] || echo "Old overlay without BLACKFILE.md: $old. Run: dispatch --type init --name init (in that repo)."
 done
-echo "Project files: $config/<repo>/BLACKFILE.md (template: $src/skill/templates/BLACKFILE.md)"
+echo "Project files: $config/<name>/BLACKFILE.md (an index) + chunks next to it (templates: $src/skill/templates/blackfile/)"
+echo "Loader: add a SessionStart hook with the command \"dispatch-context\" to ~/.claude/settings.json, so each session of a repo loads its BLACKFILE index."

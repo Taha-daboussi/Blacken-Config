@@ -27,7 +27,8 @@ The project facts live in a private file: `~/.config/dispatch/<name>/BLACKFILE.m
 
 - Read it before each dispatch. The `dispatch` script puts its path in each pane prompt.
 - No BLACKFILE.md for this repo: run `dispatch --type init --name init --no-worktree` with the prompt "Set up BLACKFILE.md: read ~/.claude/skills/dispatch/references/init.md and follow it." Dispatch no other task of that repo until the file exists.
-- Template: `templates/BLACKFILE.md`. The learn files sit next to it: `misses.md`, `misses/`, `evals/`.
+- It is a system of chunks: `BLACKFILE.md` is a small index (the remote, the main checkout, the "Always" rules, and the chunk table), loaded in every session. The details are in the chunks next to it, with the same names in every repo: `issues.md`, `build.md`, `test-env.md`, `design.md`, `review.md`, `ship.md`. Read a chunk only before the work in its row. "BLACKFILE.md 'Tests'" means the section `## Tests` in the chunk that the table lists for it. Give each sub-agent the index path and the chunk paths of its step only.
+- Templates: `templates/blackfile/`. The learn files sit next to the index: `misses.md`, `misses/`, `evals/`.
 
 ## 1. Pick the type
 
