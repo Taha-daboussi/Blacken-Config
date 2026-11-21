@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat >&2 <<'U'
+dispatch-context: find the BLACKFILE.md of the repo in a folder, and print it for Claude.
+
+  dispatch-context            print the BLACKFILE for the current folder (the SessionStart hook runs this)
+  dispatch-context --path     print only the BLACKFILE path; exit 1 when the repo has none
+  dispatch-context -C <dir>   use <dir> in place of the current folder
+
+Match: the line "Remote: <host>/<owner>/<repo>" in ~/.config/dispatch/*/BLACKFILE.md against the git remote
+(origin, else the first remote). Fallback: the folder ~/.config/dispatch/<name of the main checkout>/.
+Outside a git repo it prints nothing. A repo with no BLACKFILE gets a one-line hint.
+U
+  exit 2
+}
+
+mode=print dir=.
+while (($#)); do
+  case $1 in
+    --path) mode=path; shift ;;
+    -C) dir=$2; shift 2 ;;
+    -h|--help) usage ;;
+    *) usage ;;
+  esac
+done
+
+cfg=${XDG_CONFIG_HOME:-$HOME/.config}/dispatch
+norm() { sed -E 's#^[a-z+]+://##; s#^[^@/]+@##; s#^([^/:]+):([0-9]+/)?#\1/#; s#\.git$##; s#/+$##' | tr '[:upper:]' '[:lower:]'; }
+
+if ! git -C "$dir" rev-parse --git-dir >/dev/null 2>&1; then
+  [[ $mode == path ]] && exit 1
+  exit 0
+fi
+url=$(git -C "$dir" remote get-url origin 2>/dev/null || true)
+if [[ -z $url ]]; then
+  first=$(git -C "$dir" remote 2>/dev/null | head -n1)
+  [[ -n $first ]] && url=$(git -C "$dir" remote get-url "$first" 2>/dev/null || true)
+fi
+remote=$([[ -n $url ]] && norm <<<"$url" || true)
+main=$(dirname "$(git -C "$dir" rev-parse --path-format=absolute --git-common-dir)")
+
+found=
+if [[ -n $remote ]]; then
+  for f in "$cfg"/*/BLACKFILE.md; do
+    [[ -r $f ]] || continue
+    while read -r r; do
+      [[ $(norm <<<"$r") == "$remote" ]] && { found=$f; break 2; }
+    done < <(sed -nE 's/^[-* ]*Remote:[[:space:]]*`?([^`[:space:]]+)`?.*/\1/p' "$f")
+  done
+fi
+[[ -z $found && -r $cfg/$(basename "$main")/BLACKFILE.md ]] && found=$cfg/$(basename "$main")/BLACKFILE.md
+
+if [[ $mode == path ]]; then
+  [[ -n $found ]] || exit 1
+  printf '%s\n' "$found"
+  exit 0
+fi
+
+if [[ -z $found ]]; then
+  printf 'dispatch: this repo (%s) has no BLACKFILE.md in %s. When the user gives a task here, offer to run `dispatch --type init` to make one.\n' "${remote:-$(basename "$main")}" "$cfg"
+  exit 0
+fi
+
+printf '# Workflow file of this repo: %s\n\n' "$found"
+printf 'This private file holds how a task moves from start to done in this repo (issue states, tests, review, manual test, PR, merge, team posts). Use it together with the project CLAUDE.md. It is the only source for these workflow rules. When it and a tracked CLAUDE.md or AGENTS.md of the team disagree, stop and ask the user.\n\n'
+cat "$found"

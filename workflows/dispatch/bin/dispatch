@@ -89,7 +89,7 @@ if [[ -n $repo ]] || git rev-parse --git-dir >/dev/null 2>&1; then
 fi
 
 repo_name=$(basename "${main_checkout:-$PWD}")
-blackfile=${XDG_CONFIG_HOME:-$HOME/.config}/dispatch/$repo_name/BLACKFILE.md
+blackfile=$(dispatch-context -C "${main_checkout:-$PWD}" --path 2>/dev/null || echo "${XDG_CONFIG_HOME:-$HOME/.config}/dispatch/$repo_name/BLACKFILE.md")
 case $type in
   monitor|init) ;;
   *) [[ -r $blackfile ]] || die "no $blackfile; run: dispatch --type init --name init --prompt 'Set up BLACKFILE.md: read ~/.claude/skills/dispatch/references/init.md and follow it.'" ;;

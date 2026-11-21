@@ -23,7 +23,7 @@ Each bug, feature, review, or feedback task runs in one pane, from intake to don
 
 ## BLACKFILE.md (the project file)
 
-The project facts live in a private file: `~/.config/dispatch/<repo>/BLACKFILE.md`. `<repo>` is the folder name of the main checkout: `basename "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"`. It wins over the skill files where they differ (names, gate, tests, envs, money path, design sources, team review tool, review rules, issue states, boards, posts, merge).
+The project facts live in a private file: `~/.config/dispatch/<name>/BLACKFILE.md`. `dispatch-context --path` prints the path for the current repo: it matches the git remote against the `Remote:` line of each BLACKFILE, else the folder name of the main checkout. A global SessionStart hook (`dispatch-context`) loads the file into every session of that repo, also outside dispatch. It wins over the skill files where they differ (names, gate, tests, envs, money path, design sources, team review tool, review rules, issue states, boards, posts, merge).
 
 - Read it before each dispatch. The `dispatch` script puts its path in each pane prompt.
 - No BLACKFILE.md for this repo: run `dispatch --type init --name init --no-worktree` with the prompt "Set up BLACKFILE.md: read ~/.claude/skills/dispatch/references/init.md and follow it." Dispatch no other task of that repo until the file exists.

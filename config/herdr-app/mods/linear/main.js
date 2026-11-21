@@ -3,7 +3,7 @@ import { v_flex, h_flex } from "gpui-base";
 import { spaces, agents, terminals, focused, theme, shared, setShared, readTextFile, home, hc, run, notify, openOverlay, closeOverlay, props, checking } from "herdr";
 
 const WORKSPACES = [
-  { id: "dawn", label: "Dawn", match: /dawn/i },
+  { id: "dwn", label: "Dawn", match: /dawn/i },
   { id: "roas", label: "RoasX1ds", match: /1ds|roas/i },
   { id: "kubbly", label: "Kubbly", match: /kubbly|monorepo/i },
 ];
