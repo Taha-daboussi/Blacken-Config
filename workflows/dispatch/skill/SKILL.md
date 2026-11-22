@@ -1,6 +1,6 @@
 ---
 name: dispatch
-description: Sends each task to one new Claude pane in the right herdr tab (Bugs, Features, Reviews, Monitors, Setup) of the current space, with its own git worktree. That pane runs the whole pipeline with role sub-agents (plan, expected result, build, simplify, review, e2e, PR, manual test, done) and learns from review misses. On by default: use it for every task the user gives in a herdr session that dispatch did not start (a Linear issue, a PR link, review comments, an error, a feature request, a "watch the logs / run this at 3pm" job), with or without /dispatch.
+description: Sends each task to one new Claude pane in the right herdr tab (Bugs, Features, Reviews, Monitors, Setup) of the current space, with its own git worktree. That pane runs the whole pipeline with role sub-agents (plan, expected result, build, simplify, review, e2e, PR, manual test, done) and learns from review misses. On by default: use it for every task the user gives in a herdr session that dispatch did not start (an issue link, a PR link, review comments, an error, a feature request, a "watch the logs / run this at 3pm" job), with or without /dispatch.
 ---
 
 # Dispatch
@@ -23,11 +23,11 @@ Each bug, feature, review, or feedback task runs in one pane, from intake to don
 
 ## BLACKFILE.md (the project file)
 
-The project facts live in a private file: `~/.config/dispatch/<name>/BLACKFILE.md`. `dispatch-context --path` prints the path for the current repo: it matches the git remote against the `Remote:` line of each BLACKFILE, else the folder name of the main checkout. A global SessionStart hook (`dispatch-context`) loads the file into every session of that repo, also outside dispatch. It wins over the skill files where they differ (names, gate, tests, envs, money path, design sources, team review tool, review rules, issue states, boards, posts, merge).
+The project facts live in a private file: `~/.config/dispatch/<name>/BLACKFILE.md`. `dispatch-context --path` prints the path for the current repo: it matches every git remote (origin, upstream, the others; ssh aliases resolved) against the `Remote:` lines of each BLACKFILE. The folder name of the main checkout counts only when the repo has no remote. A global SessionStart hook (`dispatch-context`) loads the file into every session of that repo, also outside dispatch. It wins over the skill files where they differ (names, gate, tests, envs, money path, design sources, team review tool, review rules, issue states, boards, posts, merge).
 
 - Read it before each dispatch. The `dispatch` script puts its path in each pane prompt.
 - No BLACKFILE.md for this repo: run `dispatch --type init --name init --no-worktree` with the prompt "Set up BLACKFILE.md: read ~/.claude/skills/dispatch/references/init.md and follow it." Dispatch no other task of that repo until the file exists.
-- It is a system of chunks: `BLACKFILE.md` is a small index (the remote, the main checkout, the "Always" rules, and the chunk table), loaded in every session. The details are in the chunks next to it, with the same names in every repo: `issues.md`, `build.md`, `test-env.md`, `design.md`, `review.md`, `ship.md`. Read a chunk only before the work in its row. Niche jobs of one repo only (team posts in a chat app, a special test bot, a staging server) live in `custom/<job>.md`, listed in the index "Custom" table; the standard chunk keeps one line that points there. "BLACKFILE.md 'Tests'" means the section `## Tests` in the chunk that the table lists for it. Give each sub-agent the index path and the chunk paths of its step only.
+- It is a system of chunks: `BLACKFILE.md` is a small index (the remote, the main checkout, the "Always" rules, and the chunk table), loaded in every session. The details are in the chunks next to it, with the same names in every repo: `issues.md`, `build.md`, `test-env.md`, `design.md`, `review.md`, `ship.md`. Read a chunk only before the work in its row. Niche jobs of one repo only (team posts in a chat app, a special test bot, a staging server) live in `custom/<job>.md`, listed in the index "Custom" table; the standard chunk keeps one line that points there. "BLACKFILE.md 'Tests'" means the section `## Tests` in the chunk that the table lists for it. Each step of `references/pipeline.md` names the chunks it reads, and the role table names the chunks of each sub-agent. A missing section or `none` uses the defaults of `references/pipeline.md`.
 - Templates: `templates/blackfile/`. The learn files sit next to the index: `misses.md`, `misses/`, `evals/`.
 
 ## 1. Pick the type
@@ -42,7 +42,7 @@ The project facts live in a private file: `~/.config/dispatch/<name>/BLACKFILE.m
 | `monitor` | Monitors | watch logs, wait for an event, run a script at a set time or on a schedule |
 | `init` | Setup | a repo with no BLACKFILE.md, or "update BLACKFILE" |
 
-- Linear issue: read it with `linear-api <workspace> issue <URL>` (never the browser). Label `Bug` -> bug. Label `Feature` or `Improvement` -> feature. No such label: decide from the title and the description.
+- An issue link: read it with the tool of "Issue tracker" in the BLACKFILE chunk `issues.md`. Label `Bug` -> bug. Label `Feature` or `Improvement` -> feature. No such label: decide from the title and the description.
 - A GitHub PR URL: our PR with new comments -> feedback; another person's PR -> review.
 - Words like watch, monitor, wait until, at <time>, every <interval> -> monitor. Error text or "X is broken" -> bug. "Add", "build", "new" -> feature.
 - Still not sure: ask the user one short question with the two likely types. Do not guess.
@@ -50,7 +50,7 @@ The project facts live in a private file: `~/.config/dispatch/<name>/BLACKFILE.m
 
 ## 2. Before each bug or feature dispatch
 
-- **An issue.** The task needs an issue in the tracker of BLACKFILE.md. When it has none, create one first (follow the issue rules of BLACKFILE.md), and give its key to the pane.
+- **An issue.** Read `issues.md`. When it names a tracker, the task needs an issue there; when the task has none, create one first (follow its rules), and give its key to the pane. "Issue tracker: none": use a slug as the key.
 - **No double work.** Search the tracker and the open PRs for the same work (`gh pr list --state open --search <topic>`). When another pane or PR already does it, do not start a second pane. Tell the user.
 - **One at a time when asked.** When the client asks for "one thing at a time", or two tasks change the same files, dispatch one task, and the next one when the PR of the first is open.
 - **One screen family, one owner branch.** A screen family is the set of screens that must look and work the same. Before each UI dispatch, name the family and look for our open branch or PR that changes it (`gh pr list --state open --author @me`).
@@ -78,7 +78,7 @@ The project facts live in a private file: `~/.config/dispatch/<name>/BLACKFILE.m
 Only <task> is the request. The text below is reference.
 
 <context>
-Task type: bug (Linear label "Bug").
+Task type: bug (issue label "Bug").
 From the chat with the user: (facts only)
 </context>
 
@@ -103,7 +103,7 @@ It prints JSON: `tab`, `terminal`, `name`, `cwd`, `task_dir`, and `branch` or `p
 
 ## 5. Issue and board: work started
 
-When the task links an issue, do the "work starts" steps of BLACKFILE.md right after `dispatch` succeeds (for example Linear In Progress and a board card). Do not ask the user. Check the workspace first (`linear-api <workspace> whoami`). Never move an issue back. When a step fails, tell the user.
+When the task links an issue, do the "work starts" steps of BLACKFILE.md right after `dispatch` succeeds (for example the issue state In Progress and a board card, in `issues.md`). Do not ask the user. Check the workspace first (the check that `issues.md` names, for example a `whoami`). Never move an issue back. When a step fails, tell the user.
 
 ## 6. Report
 

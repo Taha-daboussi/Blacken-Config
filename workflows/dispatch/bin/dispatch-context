@@ -9,62 +9,118 @@ dispatch-context: find the BLACKFILE.md of the repo in a folder, and print it fo
   dispatch-context --path     print only the BLACKFILE path; exit 1 when the repo has none
   dispatch-context -C <dir>   use <dir> in place of the current folder
 
-Match: the line "Remote: <host>/<owner>/<repo>" in ~/.config/dispatch/*/BLACKFILE.md against the git remote
-(origin, else the first remote). Fallback: the folder ~/.config/dispatch/<name of the main checkout>/.
+Match: each line "Remote: <host>/<owner>/<repo>" in ~/.config/dispatch/*/BLACKFILE.md (an index can have several)
+against every git remote of the repo (origin first, then upstream, then the others). An ssh host alias is resolved
+with `ssh -G`. The folder name of the main checkout is used only when the repo has no remote at all.
 Outside a git repo it prints nothing. A repo with no BLACKFILE gets a one-line hint.
 U
   exit 2
 }
+die() { echo "dispatch-context: $*" >&2; exit 1; }
 
 mode=print dir=.
 while (($#)); do
   case $1 in
     --path) mode=path; shift ;;
-    -C) dir=$2; shift 2 ;;
+    -C) (($# >= 2)) || usage; dir=$2; shift 2 ;;
     -h|--help) usage ;;
     *) usage ;;
   esac
 done
+[[ -d $dir ]] || die "no folder $dir"
 
 cfg=${XDG_CONFIG_HOME:-$HOME/.config}/dispatch
-norm() { sed -E 's#^[a-z+]+://##; s#^[^@/]+@##; s#^([^/:]+):([0-9]+/)?#\1/#; s#\.git$##; s#/+$##' | tr '[:upper:]' '[:lower:]'; }
+
+norm() {
+  tr '[:upper:]' '[:lower:]' | sed -E '
+    s#^[a-z+]+://([^@/]+@)?([^/:]+)(:[0-9]+)?/#\2/#
+    s#^[^@/:]+@([^:/]+):#\1/#
+    s#^([^/:]+):#\1/#
+    s#\.git$##
+    s#/+$##'
+}
+
+resolve_alias() {
+  local url=$1 r=$2 host real
+  [[ $url =~ ^(https?|git|file):// ]] && { echo "$r"; return; }
+  command -v ssh >/dev/null || { echo "$r"; return; }
+  host=${r%%/*}
+  real=$(timeout 2 ssh -G "$host" 2>/dev/null | awk '$1 == "hostname" {print tolower($2); exit}' || true)
+  if [[ -n $real && $real != "$host" ]]; then echo "$real/${r#*/}"; else echo "$r"; fi
+}
 
 if ! git -C "$dir" rev-parse --git-dir >/dev/null 2>&1; then
   [[ $mode == path ]] && exit 1
   exit 0
 fi
-url=$(git -C "$dir" remote get-url origin 2>/dev/null || true)
-if [[ -z $url ]]; then
-  first=$(git -C "$dir" remote 2>/dev/null | head -n1)
-  [[ -n $first ]] && url=$(git -C "$dir" remote get-url "$first" 2>/dev/null || true)
+common=$(git -C "$dir" rev-parse --path-format=absolute --git-common-dir)
+if [[ $(basename "$common") == .git ]]; then
+  main=$(dirname "$common")
+else
+  main=$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null || echo "${common%.git}")
 fi
-remote=$([[ -n $url ]] && norm <<<"$url" || true)
-main=$(dirname "$(git -C "$dir" rev-parse --path-format=absolute --git-common-dir)")
 
-found=
-if [[ -n $remote ]]; then
-  for f in "$cfg"/*/BLACKFILE.md; do
-    [[ -r $f ]] || continue
-    while read -r r; do
-      [[ $(norm <<<"$r") == "$remote" ]] && { found=$f; break 2; }
-    done < <(sed -nE 's/^[-* ]*Remote:[[:space:]]*`?([^`[:space:]]+)`?.*/\1/p' "$f")
+remotes=()
+mapfile -t names < <(git -C "$dir" remote 2>/dev/null)
+ordered=()
+for n in origin upstream; do
+  for m in "${names[@]}"; do [[ $m == "$n" ]] && ordered+=("$m"); done
+done
+for m in "${names[@]}"; do [[ $m == origin || $m == upstream ]] || ordered+=("$m"); done
+for n in "${ordered[@]}"; do
+  url=$(git -C "$dir" remote get-url "$n" 2>/dev/null) || continue
+  r=$(norm <<<"$url")
+  remotes+=("$r")
+  a=$(resolve_alias "$url" "$r")
+  [[ $a == "$r" ]] || remotes+=("$a")
+done
+
+matches=()
+if ((${#remotes[@]})); then
+  shopt -s nullglob
+  for r in "${remotes[@]}"; do
+    for f in "$cfg"/*/BLACKFILE.md; do
+      [[ -r $f ]] || continue
+      while read -r line; do
+        [[ -z $line || $line == none ]] && continue
+        if [[ $(norm <<<"$line") == "$r" ]]; then
+          [[ " ${matches[*]-} " == *" $f "* ]] || matches+=("$f")
+        fi
+      done < <(sed -nE 's/^[-* ]*Remote:[[:space:]]*`?([^`[:space:]]+)`?.*/\1/p' "$f")
+    done
   done
+  shopt -u nullglob
 fi
-[[ -z $found && -r $cfg/$(basename "$main")/BLACKFILE.md ]] && found=$cfg/$(basename "$main")/BLACKFILE.md
+
+found= note=
+if ((${#matches[@]})); then
+  found=${matches[0]}
+  ((${#matches[@]} > 1)) && note="Warning: more than one BLACKFILE has a Remote line for this repo (${matches[*]}). Using the first one. Remove the wrong line."
+elif ((${#remotes[@]} == 0)); then
+  [[ -r $cfg/$(basename "$main")/BLACKFILE.md ]] && found=$cfg/$(basename "$main")/BLACKFILE.md
+elif [[ -r $cfg/$(basename "$main")/BLACKFILE.md ]]; then
+  note="dispatch: $cfg/$(basename "$main")/BLACKFILE.md has the folder name of this repo, but its Remote line does not match (${remotes[0]}). When it is the same repo, add the line \`- Remote: \`${remotes[0]}\`\` to it. Until then, no BLACKFILE is loaded."
+fi
 
 if [[ $mode == path ]]; then
+  [[ -n $note ]] && echo "$note" >&2
   [[ -n $found ]] || exit 1
   printf '%s\n' "$found"
   exit 0
 fi
 
 if [[ -z $found ]]; then
-  printf 'dispatch: this repo (%s) has no BLACKFILE.md in %s. When the user gives a task here, offer to run `dispatch --type init` to make one.\n' "${remote:-$(basename "$main")}" "$cfg"
+  if [[ -n $note ]]; then
+    printf '%s\n' "$note"
+  else
+    printf 'dispatch: this repo (%s) has no BLACKFILE.md in %s. When the user gives a task here, offer to run `dispatch --type init` to make one.\n' "${remotes[0]:-$(basename "$main")}" "$cfg"
+  fi
   exit 0
 fi
 
 size=$(wc -c <"$found")
 printf '# Workflow file of this repo: %s\n\n' "$found"
+[[ -n $note ]] && printf '%s\n\n' "$note"
 (( size > 3000 )) && printf 'Warning: this index is %s characters. Keep it under 3,000: move details into its chunks (Claude Code cuts hook text at 10,000).\n\n' "$size"
-printf 'This private index holds how a task moves from start to done in this repo. Its chunks (same folder) hold the details: read a chunk before the work in its row. Use it together with the project CLAUDE.md. It is the only source for these workflow rules. When it and a tracked CLAUDE.md or AGENTS.md of the team disagree, stop and ask the user.\n\n'
+printf 'This private index holds how a task moves from start to done in this repo. Its chunks and custom/ files (folder %s) hold the details: read a chunk before the work in its row. A missing section or `none` means the step uses the skill default. Use it together with the project CLAUDE.md. It is the only source for these workflow rules. When it and a tracked CLAUDE.md or AGENTS.md of the team disagree, stop and ask the user.\n\n' "$(dirname "$found")"
 cat "$found"

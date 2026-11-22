@@ -2,9 +2,9 @@
 
 A chunk of `~/.config/dispatch/<name>/BLACKFILE.md`. Read it before code, the gate, and the tests.
 
-## Gate (no tests)
+## Gate
 
-- Command: for example `timeout 900 go build ./... && go vet ./...`.
+- Command (build, vet, lint; no tests here): for example `timeout 900 go build ./... && go vet ./...`, or `none`.
 - Lint rule: for example "only new lint errors count; compare with clean main".
 
 ## Tests

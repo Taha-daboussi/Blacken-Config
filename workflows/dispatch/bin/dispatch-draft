@@ -1,0 +1,170 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat >&2 <<'U'
+dispatch-draft: try a learn-loop mitigation on a draft branch before the user says yes.
+
+  dispatch-draft skill <id>              draft worktree of the skill source repo (a change to the skill, an agent, or a script)
+  dispatch-draft blackfile <repo> <id>   draft worktree of the private config repo (a BLACKFILE rule of one repo)
+  dispatch-draft apply <id>              user said yes: merge the BLACKFILE draft into the config repo; keep the skill
+                                         draft branch for the user to merge; remove the draft worktrees
+  dispatch-draft drop <id>               user said no: remove the draft worktrees and branches
+  dispatch-draft show <id>               print the drafts of <id> as JSON lines
+
+Each command prints JSON. Pass its "skill_dir", "agents_dir" or "config_dir" to `dispatch-eval --skill/--agents/--config`.
+The live files (~/.claude/skills/dispatch, ~/.claude/agents, ~/.config/dispatch) stay unchanged until "apply".
+U
+  exit 2
+}
+die() { echo "dispatch-draft: $*" >&2; exit 1; }
+
+cfg=${XDG_CONFIG_HOME:-$HOME/.config}/dispatch
+live_skill=${DISPATCH_SKILL_DIR:-$HOME/.claude/skills/dispatch}
+
+default_branch() {
+  local b
+  b=$(git -C "$1" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null) && { echo "$b"; return; }
+  git -C "$1" branch --show-current
+}
+
+skill_src() {
+  [[ -e $live_skill/SKILL.md ]] || die "no skill at $live_skill (set DISPATCH_SKILL_DIR)"
+  local real top
+  real=$(dirname "$(readlink -f "$live_skill/SKILL.md")")
+  top=$(git -C "$real" rev-parse --show-toplevel 2>/dev/null) || die "$real is not in a git repo; cannot draft a skill change"
+  printf '%s\n%s\n' "$top" "${real#"$top"/}"
+}
+
+cfg_repo() {
+  git -C "$cfg" rev-parse --show-toplevel >/dev/null 2>&1 \
+    || die "$cfg is not a git repo. Run: git -C $cfg init && git -C $cfg add -A && git -C $cfg commit -m init"
+  [[ $(git -C "$cfg" rev-parse --show-toplevel) == "$(cd "$cfg" && pwd -P)" ]] || die "$cfg must be the top of its own git repo"
+}
+
+commit_all() {
+  local dir=$1 msg=$2 id=()
+  git -C "$dir" config user.email >/dev/null || id=(-c user.name=dispatch -c user.email=dispatch@localhost)
+  git -C "$dir" add -A
+  git -C "$dir" "${id[@]}" commit --quiet -m "$msg"
+}
+
+check_id() {
+  [[ $1 =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] && git check-ref-format --branch "retro/$1" >/dev/null 2>&1 || die "bad id or name: $1"
+}
+
+learn_paths() { printf ':(exclude)%s\n' "$1/misses.md" "$1/misses" "$1/evals"; }
+
+(($# >= 1)) || usage
+cmd=$1; shift
+case $cmd in
+  skill)
+    (($# == 1)) || usage
+    id=$1; check_id "$id"
+    { read -r top; read -r rel; } < <(skill_src)
+    wt="$(dirname "$top")/$(basename "$top")-draft-$id"
+    br="fix/dispatch-$id"
+    if [[ ! -d $wt ]]; then
+      if git -C "$top" rev-parse --verify --quiet "refs/heads/$br" >/dev/null; then
+        git -C "$top" worktree add --quiet "$wt" "$br"
+      else
+        cur=$(git -C "$top" branch --show-current)
+        def=$(default_branch "$top"); def=${def#origin/}
+        [[ $cur == "$def" ]] || echo "dispatch-draft: the live skill checkout $top is on '${cur:-detached}', not '$def'; the draft starts from the live HEAD" >&2
+        [[ -z $(git -C "$top" status --porcelain -- "$(dirname "$rel")") ]] \
+          || echo "dispatch-draft: the live skill folder has changes that are not committed; the draft does not have them" >&2
+        git -C "$top" worktree add --quiet -b "$br" "$wt" HEAD
+      fi
+    fi
+    agents=$wt/$(dirname "$rel")/agents
+    [[ -d $agents ]] || agents=
+    jq -cn --arg id "$id" --arg wt "$wt" --arg br "$br" --arg s "$wt/$rel" --arg a "$agents" \
+      '{draft: "skill", id: $id, worktree: $wt, branch: $br, skill_dir: $s, agents_dir: $a}'
+    ;;
+  blackfile)
+    (($# == 2)) || usage
+    repo=$1 id=$2; check_id "$id"; check_id "$repo"
+    cfg_repo
+    [[ -r $cfg/$repo/BLACKFILE.md ]] || die "no $cfg/$repo/BLACKFILE.md"
+    wt="$(dirname "$cfg")/dispatch-draft-$id"
+    br="retro/$id"
+    if [[ ! -d $wt ]]; then
+      mapfile -t ex < <(learn_paths "$repo")
+      dirty=$(git -C "$cfg" status --porcelain -- "$repo" "${ex[@]}")
+      [[ -z $dirty ]] || die "the chunks of $repo have changes that are not committed, so a draft would not have them. Ask the user, commit them (git -C $cfg add $repo && git -C $cfg commit), then run this again:
+$dirty"
+      if git -C "$cfg" rev-parse --verify --quiet "refs/heads/$br" >/dev/null; then
+        git -C "$cfg" worktree add --quiet "$wt" "$br"
+      else
+        git -C "$cfg" worktree add --quiet -b "$br" "$wt" HEAD
+      fi
+    fi
+    jq -cn --arg id "$id" --arg wt "$wt" --arg br "$br" --arg c "$wt" --arg r "$repo" \
+      '{draft: "blackfile", id: $id, repo: $r, worktree: $wt, branch: $br, config_dir: $c}'
+    ;;
+  show|apply|drop)
+    (($# == 1)) || usage
+    id=$1; check_id "$id"
+    found=0
+    if { read -r top; read -r rel; } < <(skill_src 2>/dev/null); then
+      wt="$(dirname "$top")/$(basename "$top")-draft-$id"; br="fix/dispatch-$id"
+      if [[ -d $wt ]] || git -C "$top" rev-parse --verify --quiet "refs/heads/$br" >/dev/null; then
+        found=1
+        case $cmd in
+          show) jq -cn --arg wt "$([[ -d $wt ]] && echo "$wt")" --arg br "$br" '{draft: "skill", worktree: $wt, branch: $br}' ;;
+          apply)
+            if [[ -d $wt ]]; then
+              if [[ -n $(git -C "$wt" status --porcelain) ]]; then
+                commit_all "$wt" "fix(dispatch): learn-loop mitigation $id"
+              fi
+              git -C "$top" worktree remove "$wt"
+            fi
+            if [[ -z $(git -C "$top" rev-list HEAD.."$br") ]]; then
+              git -C "$top" branch -D "$br" >/dev/null
+              echo "dispatch-draft: the skill draft $br has no change; removed it"
+            else
+              echo "dispatch-draft: skill change is on branch $br of $top. The user merges it, then runs install.sh. Delete the branch after the merge."
+            fi
+            ;;
+          drop)
+            [[ -d $wt ]] && git -C "$top" worktree remove --force "$wt"
+            git -C "$top" branch -D "$br" >/dev/null
+            echo "dispatch-draft: dropped $br"
+            ;;
+        esac
+      fi
+    fi
+    if git -C "$cfg" rev-parse --show-toplevel >/dev/null 2>&1; then
+      wt="$(dirname "$cfg")/dispatch-draft-$id"; br="retro/$id"
+      if [[ -d $wt ]] || git -C "$cfg" rev-parse --verify --quiet "refs/heads/$br" >/dev/null; then
+        found=1
+        case $cmd in
+          show) jq -cn --arg wt "$([[ -d $wt ]] && echo "$wt")" --arg br "$br" '{draft: "blackfile", worktree: $wt, branch: $br}' ;;
+          apply)
+            if [[ -d $wt && -n $(git -C "$wt" status --porcelain) ]]; then
+              commit_all "$wt" "retro $id: approved mitigation"
+            fi
+            mapfile -t touched < <(git -C "$cfg" diff --name-only "HEAD...$br")
+            if ((${#touched[@]})); then
+              dirty=$(git -C "$cfg" status --porcelain -- "${touched[@]}")
+              [[ -z $dirty ]] || die "the live config has changes that are not committed in the files of this draft. Ask the user, commit or stash them in $cfg, then run apply again (the draft branch $br is kept):
+$dirty"
+            fi
+            git -C "$cfg" merge --quiet --no-edit "$br" \
+              || die "merge of $br into $cfg failed; resolve it in $cfg and commit, then run apply again (the draft branch $br is kept)"
+            [[ -d $wt ]] && git -C "$cfg" worktree remove --force "$wt"
+            git -C "$cfg" branch -d "$br" >/dev/null
+            echo "dispatch-draft: merged $br into $cfg"
+            ;;
+          drop)
+            [[ -d $wt ]] && git -C "$cfg" worktree remove --force "$wt"
+            git -C "$cfg" branch -D "$br" >/dev/null
+            echo "dispatch-draft: dropped $br"
+            ;;
+        esac
+      fi
+    fi
+    ((found)) || die "no draft for $id"
+    ;;
+  *) usage ;;
+esac

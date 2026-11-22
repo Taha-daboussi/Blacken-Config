@@ -12,4 +12,4 @@ A chunk of `~/.config/dispatch/<name>/BLACKFILE.md`. Read it before an e2e run, 
 ## Money path
 
 - What counts as a money path, and how to run it (for example "a real run on mainnet, so the order fills").
-- Limits: the wallet, the token, the most money for one test.
+- Limits: the account, the asset, the most money for one test.

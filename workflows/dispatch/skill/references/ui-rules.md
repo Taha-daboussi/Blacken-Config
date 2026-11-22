@@ -11,9 +11,9 @@ One control (a button, a row, a title, a label, an icon, a format) has one form 
 - **A change is a change for every screen.** When the user or the client changes a shared control, the builder and each screen with that control change in one PR, never one screen only.
 - **Two forms in the app are a bug.** Do not add a third form. Log the two forms in the issue tracker and ask the user which form wins.
 
-## Design sources (the agent never decides the design)
+## Where the design comes from (the agent never decides the design)
 
-The user's rule: "we dont want you to decide the design here". For each part of a screen, use the spec (the issue, the spec doc and its images, the client messages), then the sources of BLACKFILE.md, in their order. When no source answers, or the sources disagree: do not guess and do not pick a form. Ask the user and wait.
+The user's rule: "we dont want you to decide the design here". For each part of a screen, use the spec (the issue, the spec doc and its images, the client messages), then "Design sources" of the BLACKFILE chunk `design.md`, in their order. When no source answers, or the sources disagree: do not guess and do not pick a form. Ask the user and wait.
 
 - A part with no source is a question, not a design. For a new part, our own code and an older screen of ours are not a source. For a control that the app already has, the form in use is not a new design: continue with it.
 - `expected.md` writes the source next to each changed line.

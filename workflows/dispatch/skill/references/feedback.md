@@ -1,6 +1,6 @@
 # Feedback task: fix what a person found
 
-`dispatch --type feedback --pr <n>` starts a pane on the PR branch. It also runs for a note that the user pastes (a client note, a Linear comment, a Discord message, a screenshot). The goal: fix each valid item, then learn from it (`references/retro.md`).
+`dispatch --type feedback --pr <n>` starts a pane on the PR branch. It also runs for a note that the user pastes (a client note, an issue comment, a chat message, a screenshot). The goal: fix each valid item, then learn from it (`references/retro.md`).
 
 ## Collect (sub-agent `dispatch-feedback`)
 
@@ -21,11 +21,14 @@ F1 <one-line summary>
 
 `dispatch-step 1 feedback`
 
-1. Read BLACKFILE.md and `feedback.md`.
-2. For each item, check it against the code (`REVIEW.md` section 5). Mark it `valid`, `not valid` (with the evidence), or `decision` (a product or cost choice for the user).
-3. Show the user the list in short lines and ask about each `decision` item (`--wait`).
-4. Send the valid items to `dispatch-builder` as a fix round. Then the gate, the scoped tests, a re-review of the fix commits (`references/review.md`, re-review), and push.
-5. UI items: run the UI e2e of the changed steps (`references/e2e-ui.md`), with `expected.md` corrected first by `dispatch-spec` when the note changes the expected screen.
-6. Replies on GitHub: draft one short reply for each thread (what changed, and the commit, or why not). Post them only after the user's yes.
-7. Then the retro for each valid item: `references/retro.md`.
-8. Close the pane as in `references/pipeline.md`, "Close the pane".
+1. Read BLACKFILE.md (the index) and `review.md` of its chunks.
+2. Find the original task folder: `~/.local/share/dispatch/<repo>-*/task.md` whose branch line is this PR branch. When it exists, copy its `task.md`, `expected.md` and `plan.md` into this task folder. When it does not, write `task.md` from the PR (title, body, linked issue) in the form of step 1 of `references/pipeline.md`.
+3. Start `dispatch-feedback`. Then check each item of `feedback.md` against the code (`REVIEW.md` section 5). Mark it `valid`, `not valid` (with the evidence), or `decision` (a product or cost choice for the user).
+4. Show the user the list in short lines and ask about each `decision` item (`--wait`).
+5. When a valid item changes the expected result (a screen, a text, a rule of behavior), start `dispatch-spec` to correct `expected.md` first, with the item as a source.
+6. Send the valid items to `dispatch-builder` as a fix round (`references/pipeline.md`, "UI part and logic part", for the model). Then the gate, the scoped tests, a re-review of the fix commits (`references/review.md`, re-review), and push.
+7. UI items: run the UI e2e of the changed steps (`references/e2e-ui.md`). Backend items: the backend e2e of the changed checks (`references/e2e-backend.md`), when BLACKFILE.md has an env.
+8. Replies on GitHub: draft one short reply for each thread (what changed, and the commit, or why not). Post them only after the user's yes.
+9. The PR was ready or merged before: do step 10.1 of `references/pipeline.md` (newest main), and step 9 (manual test) only when a UI item changed a screen. The PR was a draft: go on with steps 8 to 10 of `references/pipeline.md`.
+10. Then the retro for each valid item: `references/retro.md`. Pass the original task folder.
+11. Close the pane as in `references/pipeline.md`, "Close the pane".
