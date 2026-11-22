@@ -43,7 +43,7 @@ The order is fixed: **analyse -> reproduce -> draft -> prove -> no regressions -
 7. **Ask.** Show the user each mitigation in 4 lines: the step and the cause, the change (file and line), the scope, and the proof (`before: missed, after: 2/2 caught, old cases: 5/5`). Ask yes or no for each one (`--wait`). The user's rule: never add or change a rule without asking.
 8. **Apply or drop.**
    - Yes, skill or BLACKFILE draft: `dispatch-draft apply <id>`. A BLACKFILE draft merges into the private config repo. A skill draft stays on its branch: tell the user the branch; the user merges it and runs `install.sh`.
-   - Yes, product-repo check: start `dispatch --type feature` for it, with the miss file and `check.patch` as the spec.
+   - Yes, product-repo check: start `dispatch --type be-feature` for it (`ui-feature` when the check is visible), with the miss file and `check.patch` as the spec.
    - No: `dispatch-draft drop <id>`.
    - `apply` refuses when the live config has changes that are not committed in the files of the draft, or when the merge fails. The draft branch stays. Show the user the files, and run `apply` again after the user commits them. Never `drop` an approved draft.
    - Record each eval result in the case: `dispatch-eval <repo> --record <id> before|after|regression caught|missed "<note>"`.

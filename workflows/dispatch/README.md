@@ -59,7 +59,7 @@ The skill also uses these tools when they are there: `linear-api` (Linear), `cla
 In a herdr session, give the task to Claude, or type `/dispatch <task>`. The dispatcher runs, for example:
 
 ```sh
-dispatch --type bug --name abc-123 --branch fix/abc-123-slippage --prompt-file prompt.md
+dispatch --type be-bug --name abc-123 --branch fix/abc-123-slippage --prompt-file prompt.md
 dispatch --type feedback --name pr-62 --pr 62 --prompt-file prompt.md
 ```
 

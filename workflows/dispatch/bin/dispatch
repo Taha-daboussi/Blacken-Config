@@ -7,21 +7,22 @@ dispatch: start one Claude pane for one task in the right herdr tab of this spac
 The pane runs the whole pipeline of the dispatch skill (references/pipeline.md).
 
 Usage:
-  dispatch --type bug|feature|review|feedback|retro|monitor|init --name <slug> (--prompt <text> | --prompt-file <file>)
+  dispatch --type ui-bug|be-bug|ui-feature|be-feature|review|feedback|retro|monitor|init --name <slug> (--prompt <text> | --prompt-file <file>)
            [--branch <new-branch> | --on <branch> | --pr <number> | --no-worktree] [--plan | --no-plan]
            [--repo <path>] [--space <id>]
 
-  --type      bug -> Bugs, feature -> Features, review|feedback|retro -> Reviews, monitor -> Monitors, init -> Setup
+  --type      ui-bug -> UI Bugs, be-bug -> BE Bugs, ui-feature -> UI Features, be-feature -> BE Features,
+              feedback|retro -> Own Review, review -> Teammate Review, monitor -> Monitors, init -> Setup
   --name      short pane name: daw-123, pr-62, prod-logs (a-z 0-9 - _)
-  --branch    new worktree on a new branch from origin's default branch (bug, feature)
-  --on        worktree on an existing pushed branch (bug or feature on an owner branch)
+  --branch    new worktree on a new branch from origin's default branch (bug and feature types)
+  --on        worktree on an existing pushed branch (a bug or feature type on an owner branch)
   --pr        worktree on the head branch of that PR (review, feedback); detached for a PR from a fork
   --no-worktree  run in the repo's main checkout (default for monitor, retro, init)
   --plan, --no-plan  force or skip the plan step (default: the size rules of references/planning.md)
   --repo      repo path (default: the git repo of the current folder)
   --space     herdr space id (default: the space of the calling terminal)
 
-Env: DISPATCH_MAX_PANES (default 4) panes per tab before "Bugs 2" opens.
+Env: DISPATCH_MAX_PANES (default 4) panes per tab before "UI Bugs 2" opens.
 Agent command: "<YYYY-MM-DD> <command>" in $XDG_RUNTIME_DIR/dispatch-<space>.agent starts the agents
 of that space with <command> (for example claudet) on that day only. Default: claude.
 EOF
@@ -52,13 +53,16 @@ done
 
 skill=$HOME/.claude/skills/dispatch
 case $type in
-  bug) base=Bugs; guide=references/pipeline.md ;;
-  feature) base=Features; guide=references/pipeline.md ;;
-  review) base=Reviews; guide=references/review.md ;;
-  feedback) base=Reviews; guide=references/feedback.md ;;
-  retro) base=Reviews; guide=references/retro.md ;;
+  ui-bug) base="UI Bugs"; guide=references/pipeline.md ;;
+  be-bug) base="BE Bugs"; guide=references/pipeline.md ;;
+  ui-feature) base="UI Features"; guide=references/pipeline.md ;;
+  be-feature) base="BE Features"; guide=references/pipeline.md ;;
+  review) base="Teammate Review"; guide=references/review.md ;;
+  feedback) base="Own Review"; guide=references/feedback.md ;;
+  retro) base="Own Review"; guide=references/retro.md ;;
   monitor) base=Monitors; guide= ;;
   init) base=Setup; guide=references/init.md ;;
+  bug|feature) die "type $type is gone: use ui-$type or be-$type (a task with any visible change is ui-$type)" ;;
   e2e|manual) die "type $type is gone: the task pane runs e2e and the manual test itself (references/pipeline.md)" ;;
   *) usage ;;
 esac

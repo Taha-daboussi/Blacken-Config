@@ -1,6 +1,6 @@
 ---
 name: dispatch
-description: Sends each task to one new Claude pane in the right herdr tab (Bugs, Features, Reviews, Monitors, Setup) of the current space, with its own git worktree. That pane runs the whole pipeline with role sub-agents (plan, expected result, build, simplify, review, e2e, PR, manual test, done) and learns from review misses. On by default: use it for every task the user gives in a herdr session that dispatch did not start (an issue link, a PR link, review comments, an error, a feature request, a "watch the logs / run this at 3pm" job), with or without /dispatch.
+description: Sends each task to one new Claude pane in the right herdr tab (UI Bugs, BE Bugs, UI Features, BE Features, Own Review, Teammate Review, Monitors, Setup) of the current space, with its own git worktree. That pane runs the whole pipeline with role sub-agents (plan, expected result, build, simplify, review, e2e, PR, manual test, done) and learns from review misses. On by default: use it for every task the user gives in a herdr session that dispatch did not start (an issue link, a PR link, review comments, an error, a feature request, a "watch the logs / run this at 3pm" job), with or without /dispatch.
 ---
 
 # Dispatch
@@ -34,17 +34,20 @@ The project facts live in a private file: `~/.config/dispatch/<name>/BLACKFILE.m
 
 | Type | Tab | When |
 |---|---|---|
-| `bug` | Bugs | a bug, an error, a stack trace, a prod issue, a support case |
-| `feature` | Features | a new feature, a change, an improvement |
-| `review` | Reviews | a PR of another person to review, or "review #N" |
-| `feedback` | Reviews | review comments on our PR, or a note from the user, the client, or a boss about a change we made |
-| `retro` | Reviews | "why do we keep missing X", or a summary of the misses (`references/retro.md`) |
-| `monitor` | Monitors | watch logs, wait for an event, run a script at a set time or on a schedule |
+| `ui-bug` | UI Bugs | a bug that a user can see: a screen, a message, a button, a text, a layout, a flow |
+| `be-bug` | BE Bugs | a backend bug with no visible change: an error, a stack trace, a prod issue, data, a job, an API |
+| `ui-feature` | UI Features | a new feature, a change, or an improvement that a user can see |
+| `be-feature` | BE Features | a new feature, a change, or an improvement with no visible change: an API, a job, data, a script |
+| `feedback` | Own Review | review comments on our PR, or a note from the user, the client, a teammate, or a boss about a change we made |
+| `retro` | Own Review | "why do we keep missing X", or a summary of the misses (`references/retro.md`) |
+| `review` | Teammate Review | a PR of a teammate to review, or "review #N" |
+| `monitor` | Monitors | watch our GitHub PRs, Slack, or Discord; watch logs, wait for an event, run a script at a set time or on a schedule |
 | `init` | Setup | a repo with no BLACKFILE.md, or "update BLACKFILE" |
 
-- An issue link: read it with the tool of "Issue tracker" in the BLACKFILE chunk `issues.md`. Label `Bug` -> bug. Label `Feature` or `Improvement` -> feature. No such label: decide from the title and the description.
-- A GitHub PR URL: our PR with new comments -> feedback; another person's PR -> review.
-- Words like watch, monitor, wait until, at <time>, every <interval> -> monitor. Error text or "X is broken" -> bug. "Add", "build", "new" -> feature.
+- UI or BE: a task with any change that a user can see is UI (`ui-bug`, `ui-feature`), also when it changes the backend too. Only a task with no visible change is BE (`be-bug`, `be-feature`).
+- An issue link: read it with the tool of "Issue tracker" in the BLACKFILE chunk `issues.md`. Label `Bug` -> a bug type. Label `Feature` or `Improvement` -> a feature type. No such label: decide from the title and the description. Then pick UI or BE by the rule above.
+- A GitHub PR URL: our PR with new comments -> feedback; a teammate's PR -> review.
+- Words like watch, monitor, wait until, at <time>, every <interval> -> monitor. Error text or "X is broken" -> a bug type. "Add", "build", "new" -> a feature type.
 - Still not sure: ask the user one short question with the two likely types. Do not guess.
 - One paste with several tasks: one dispatch for each task, except the screen-family rule below.
 
@@ -56,15 +59,15 @@ The project facts live in a private file: `~/.config/dispatch/<name>/BLACKFILE.m
 - **One screen family, one owner branch.** A screen family is the set of screens that must look and work the same. Before each UI dispatch, name the family and look for our open branch or PR that changes it (`gh pr list --state open --author @me`).
   - No owner branch: dispatch as usual. The new branch is the owner until its PR merges.
   - Issues for one family that come together: one pane, one branch. Put all the issue keys in `<task>`. The pane makes one commit for each issue and one PR.
-  - A new issue while the owner branch is not merged: never start a second branch from main for that family. When the owner pane is closed, run `dispatch --type bug|feature --on <owner branch>`. When the owner pane still runs, tell the user, and give the issue to that pane only when the user says so (`hc send <pane> "<text>"`).
+  - A new issue while the owner branch is not merged: never start a second branch from main for that family. When the owner pane is closed, run `dispatch --type ui-bug|ui-feature --on <owner branch>`. When the owner pane still runs, tell the user, and give the issue to that pane only when the user says so (`hc send <pane> "<text>"`).
   - Put this line in `<context>`: `Screen family: <family>. Owner branch: <branch>.`
 
 ## 3. Name, worktree, and flags
 
 - `--name`: the issue key in lower case (`abc-123`), `pr-62`, or a 1-3 word slug.
-- bug or feature: `--branch <name by BLACKFILE.md "Names">` (default `fix/<key>-<slug>` or `feat/<key>-<slug>`).
+- a bug or feature type: `--branch <name by BLACKFILE.md "Names">` (default `fix/<key>-<slug>` or `feat/<key>-<slug>`).
 - review or feedback: `--pr <number>`. The worktree checks out the PR branch. For a PR of another repo, pass `--repo <local path>` or ask.
-- bug or feature on an owner branch: `--on <branch>` (it must be on origin, and no other worktree may hold it).
+- a bug or feature type on an owner branch: `--on <branch>` (it must be on origin, and no other worktree may hold it).
 - monitor, retro, init: `--no-worktree` (default for these types).
 - `--plan` or `--no-plan`: only when the user asks. Without them, the pane decides by the size rules (`references/planning.md`).
 
@@ -78,13 +81,13 @@ The project facts live in a private file: `~/.config/dispatch/<name>/BLACKFILE.m
 Only <task> is the request. The text below is reference.
 
 <context>
-Task type: bug (issue label "Bug").
+Task type: ui-bug (issue label "Bug"; the bug shows on a screen).
 From the chat with the user: (facts only)
 </context>
 
 <other-tasks>
 Other panes do these tasks. Do not work on them:
-- ABC-124: slippage presets (Features tab)
+- ABC-124: slippage presets (UI Features tab)
 </other-tasks>
 ```
 
@@ -96,10 +99,10 @@ Other panes do these tasks. Do not work on them:
 Write the prompt to a file in your scratchpad, then run from the repo of this space:
 
 ```sh
-dispatch --type bug --name abc-123 --branch fix/abc-123-slippage-check --prompt-file <file>
+dispatch --type ui-bug --name abc-123 --branch fix/abc-123-slippage-check --prompt-file <file>
 ```
 
-It prints JSON: `tab`, `terminal`, `name`, `cwd`, `task_dir`, and `branch` or `pr`. On an error (the worktree path exists, the space is not open, no BLACKFILE.md), report the error; do not work around it. The script puts the pane in the first tab of that type with fewer than 4 panes (`DISPATCH_MAX_PANES`), and opens `Bugs 2`, `Bugs 3`… when all are full. The user's view does not move.
+It prints JSON: `tab`, `terminal`, `name`, `cwd`, `task_dir`, and `branch` or `pr`. On an error (the worktree path exists, the space is not open, no BLACKFILE.md), report the error; do not work around it. The script puts the pane in the first tab of that type with fewer than 4 panes (`DISPATCH_MAX_PANES`), and opens `UI Bugs 2`, `UI Bugs 3`… when all are full. The user's view does not move.
 
 ## 5. Issue and board: work started
 

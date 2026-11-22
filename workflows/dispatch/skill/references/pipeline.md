@@ -79,7 +79,7 @@ When a section is missing or says `none`:
 
 1. Read the index, the task in your prompt, and the issue (the tool of "Issue tracker"). Read its comments too.
 2. Misses of the area: in `misses.md` next to the index (when it exists), read the lines whose area matches the paths that this task touches (`rg -n '<path>' <misses.md>`) and the last 5 lines.
-3. Write `task.md`: the task word for word, the issue key and link, the spec links, the kind (bug or feature), the BLACKFILE.md path, the worktree, the branch, and the misses of the area.
+3. Write `task.md`: the task word for word, the issue key and link, the spec links, the kind (bug or feature, UI or BE, from the task type), the BLACKFILE.md path, the worktree, the branch, and the misses of the area.
 4. Decide the plan step with the size rules of `references/planning.md`, unless the prompt says `--plan` or `--no-plan`. Write the reason in `report.md`.
 
 ## Step 2: Plan and grill (only by the size rules)
@@ -100,7 +100,7 @@ Follow `references/planning.md`. The result is `plan.md` with no open question, 
 
 `dispatch-step 4 build` · Reads: `build.md`, `design.md` (UI part)
 
-Start `dispatch-builder` with the task folder, the worktree, the mode (`bug` or `feature`), and the part.
+Start `dispatch-builder` with the task folder, the worktree, the mode (`bug` or `feature`, from the task type), and the part.
 
 - Kind `backend`: one builder, part `logic` (Opus, the default).
 - Kind `UI`: one builder, part `UI`, with `model: "sonnet"`.
