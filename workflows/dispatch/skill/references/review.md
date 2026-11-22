@@ -1,6 +1,6 @@
 # Step 6: Review
 
-The pane runs the review rounds of `~/.claude/REVIEW.md` with `dispatch-reviewer` sub-agents. `REVIEW.md` is the policy: what a finding is, the levels, the rounds, the stop rule. This file says who does each step, with which model, and in which order. BLACKFILE.md wins over this file ("Team review tool", "Review rules", "Hot spots", "Models").
+The pane runs the review rounds of `~/.claude/REVIEW.md` with `dispatch-reviewer` sub-agents. `REVIEW.md` is the policy: what a finding is, the levels, the rounds, the stop rule. This file says who does each step, with which model, and in which order. The BLACKFILE chunk `review.md` ("Team review tool", "Review rules", "Hot spots") and `build.md` ("Models", "Tests") win over this file. Give each reviewer the paths of both chunks.
 
 ## Contents
 
@@ -29,7 +29,7 @@ Reason: about one boss finding in five came from code on `main` that the branch 
 1. `git fetch origin && git merge origin/<default>`. Merge, never rebase, because the branch is pushed. Fix each conflict on the branch.
 2. Run the gate and the scoped tests of BLACKFILE.md. A red result goes to `dispatch-builder` as a fix round.
 3. Push. Range: `origin/<default>...HEAD`. Note the head SHA.
-4. List what `main` changed since the branch point (`git diff <merge-base> origin/<default>`) in the files and packages that the branch changes or calls: each changed or new function, and each new check that `main` added to a function (a minimum, a limit, a role check, a state check). For each one, name the branch code that calls it, and the branch code that is a second path for the same action and does not call it (an Edit, Retry, Resume or Import next to a Create or Buy that `main` changed). Write the list to `review/main-changes.md`. Finder A reads it. (Retro 2026-11-21, PR #107: the old list held only the called functions, so it was empty, and the new minimum check on Create never reached the branch's Edit.)
+4. List what `main` changed since the branch point (`git diff <merge-base> origin/<default>`) in the files and packages that the branch changes or calls: each changed or new function, and each new check that `main` added to a function (a minimum, a limit, a role check, a state check). For each one, name the branch code that calls it, and the branch code that is a second path for the same action and does not call it (an Edit, Retry, Resume or Import next to a Create or Buy that `main` changed). Write the list to `review/main-changes.md`. Finder A reads it. A list of only the called functions is often empty and misses the second paths. The pane does not read the diff for this: start one `dispatch-reviewer` with role `main changes` and `model: "sonnet"`, with the merge base, `origin/<default>`, and the files that the branch changes; it writes the list.
 
 ## Step 1: Find
 

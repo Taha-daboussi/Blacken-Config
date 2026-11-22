@@ -9,7 +9,7 @@ A Claude Code workflow for herdr. One dispatcher session takes each task (a Line
 -> 9 manual test (UI changes only) -> 10 ready, done, learn from misses, close
 ```
 
-The Claude status line shows the step of each pane (`⚙ dispatch 6/10 review`), and `⏳` with one Telegram ping when the pane waits for you.
+The Claude status line shows the step of each pane (`⚙ dispatch 6/10 review`), and `⏳` with one ping (`claude-tg`, when installed) when the pane waits for you.
 
 When a person finds a problem after a step said "done" (a review comment, a UI note, a bug in the manual test), a retro finds which step missed it and why, proposes the strongest fix for that class (a check that always runs, a pipeline change, or a project rule), and proves it on the old commit with an eval case.
 
@@ -26,7 +26,8 @@ When a person finds a problem after a step said "done" (a review comment, a UI n
   - `dispatch-step`: records the step of a pane (footer, herdr label, step log, ping on wait)
   - `dispatch-ui-diff`: compares the expected screen with the DOM text of a shot, plus a pixel diff
   - `dispatch-pr-overlap`: lists the other open PRs whose added lines use a function that this branch changed (step 8, no model)
-  - `dispatch-eval`: prepares and records the eval cases of the learn loop
+  - `dispatch-eval`: prepares, runs (step `check`) and records the eval cases of the learn loop, also against a draft (`--skill`, `--agents`, `--config`) and across all repos (`--all-repos`)
+  - `dispatch-draft`: puts a learn-loop mitigation on a draft branch (skill repo or private config repo), then applies or drops it after the user answers
   - `dispatch-guard-expected`: the hook that stops the builder from editing `expected.md`
   - `dispatch-close`: closes the pane of a dispatch task when it is done
   - `dispatch-stats`: the time table of one task, from the Claude session logs

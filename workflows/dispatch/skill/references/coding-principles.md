@@ -23,7 +23,7 @@ The builder reads this file before it writes code. It holds the rules of `ponyta
 - One concept, one home. Put logic in the layer and package that already own the concept. Do not let feature logic leak into shared code.
 - Delete before you add. A change that removes a branch, a flag, or a layer beats a change that moves it.
 - Do not push a file from under 1000 lines to over 1000 lines. Split it first.
-- When a new builder or helper replaces the old form of a shared control, delete the old one in the same change. Then each open PR that still calls it fails to build at the merge, and nobody misses it. (Retro 2026-11-21, PR #113: the old progress bar stayed next to the new one, and 4 open PRs kept using it.)
+- When a new builder or helper replaces the old form of a shared control, delete the old one in the same change. Then each open PR that still calls it fails to build at the merge, and nobody misses it.
 - Keep related writes atomic. Do not leave state half applied when one step fails.
 - Run independent work in parallel only when that is also simpler.
 
@@ -54,7 +54,7 @@ The builder reads this file before it writes code. It holds the rules of `ponyta
 - No code comments, unless the repo rules ask for them.
 - No scaffolding "for later", no dead code, no unused exports.
 - No test for a case that no real caller can reach.
-- No extra error handling "to be safe" that the repo rules do not ask for. When the repo rules ask for logs and error handling in each change (ROAS does), follow them.
+- No extra error handling "to be safe" that the repo rules do not ask for. When the repo rules ask for logs and error handling in each change, follow them.
 
 ## 8. Simplify step (after the build)
 
