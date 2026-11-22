@@ -3,14 +3,26 @@ set -euo pipefail
 
 die() { echo "dispatch-close: $*" >&2; exit 1; }
 
+log="${XDG_STATE_HOME:-$HOME/.local/state}/dispatch/close.log"
+mkdir -p "${log%/*}"
+now=$(date '+%Y-%m-%dT%H:%M:%S%z')
+
+if [[ -n ${DISPATCH_TERM:-} && -z ${1:-} ]]; then
+  [[ -n ${TMUX_PANE:-} ]] || die "DISPATCH_TERM is set, but this is not a tmux pane (TMUX_PANE unset)"
+  [[ $(tmux show-options -w -t "$TMUX_PANE" -v @dispatch_term 2>/dev/null) == "$DISPATCH_TERM" ]] \
+    || die "the tmux window of $TMUX_PANE is not the dispatch pane $DISPATCH_TERM"
+  echo "$now close $DISPATCH_TERM" >>"$log"
+  tmux run-shell -b "sleep 2; tmux kill-window -t '$TMUX_PANE'"
+  echo "dispatch-close: $DISPATCH_TERM closes in 2s"
+  exit 0
+fi
+
 term=${1:-${HC_TERMINAL_ID:-}}
-[[ -n $term ]] || die "not in a herdr terminal (HC_TERMINAL_ID unset)"
+[[ -n $term ]] || die "not in a dispatch pane (DISPATCH_TERM and HC_TERMINAL_ID unset)"
 info=$(hc get "$term") || die "no terminal $term"
 jq -e '.labels["dispatch.agent"] == "1"' >/dev/null <<<"$info" || die "$term is not a dispatch agent pane"
 
-log="$HOME/.local/state/dispatch/close.log"
-mkdir -p "${log%/*}"
-echo "$(date -Is) close $term $(jq -r '.name // ""' <<<"$info")" >>"$log"
+echo "$now close $term $(jq -r '.name // ""' <<<"$info")" >>"$log"
 
 setsid -f bash -c 'sleep 2; hc keep "$0" --off; hc kill "$0"; hc rm "$0"' "$term" >>"$log" 2>&1 </dev/null
 echo "dispatch-close: $term closes in 2s"

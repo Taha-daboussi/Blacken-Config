@@ -9,7 +9,7 @@ You are the dispatcher. You pick the task type, start one pane for it with the `
 
 Dispatch is on by default. Every task that the user gives in this session goes through this skill, also when the user does not type /dispatch. Questions about the running panes, and tasks that the user explicitly asks you to do here, are not dispatched.
 
-Check where you run: `hc get "$HC_TERMINAL_ID" | jq -r '.labels.where'` prints `<space> / <tab>`. Outside herdr (`HC_TERMINAL_ID` unset), say so and stop.
+Check where you run: `hc get "$HC_TERMINAL_ID" | jq -r '.labels.where'` prints `<space> / <tab>`. Outside herdr (`HC_TERMINAL_ID` unset), dispatch only when the user asks for it (`/dispatch`): the script then uses tmux and starts each pane as a window of the tmux session `dispatch` (`--runner tmux`). Tell the user `tmux attach -t dispatch`. No herdr and no tmux: say so and stop.
 
 ## The pipeline in one pane
 
@@ -56,7 +56,7 @@ The project facts live in a private file: `~/.config/dispatch/<name>/BLACKFILE.m
 - **One screen family, one owner branch.** A screen family is the set of screens that must look and work the same. Before each UI dispatch, name the family and look for our open branch or PR that changes it (`gh pr list --state open --author @me`).
   - No owner branch: dispatch as usual. The new branch is the owner until its PR merges.
   - Issues for one family that come together: one pane, one branch. Put all the issue keys in `<task>`. The pane makes one commit for each issue and one PR.
-  - A new issue while the owner branch is not merged: never start a second branch from main for that family. When the owner pane is closed, run `dispatch --type bug|feature --on <owner branch>`. When the owner pane still runs, tell the user, and give the issue to that pane only when the user says so (`hc send <pane> "<text>"`).
+  - A new issue while the owner branch is not merged: never start a second branch from main for that family. When the owner pane is closed, run `dispatch --type bug|feature --on <owner branch>`. When the owner pane still runs, tell the user, and give the issue to that pane only when the user says so (`hc send <pane> "<text>"`; tmux: `tmux send-keys -t dispatch:<pane> "<text>" Enter`).
   - Put this line in `<context>`: `Screen family: <family>. Owner branch: <branch>.`
 
 ## 3. Name, worktree, and flags
@@ -109,7 +109,7 @@ When the task links an issue, do the "work starts" steps of BLACKFILE.md right a
 
 One short block for each task: the type and why, the tab, the pane name, the worktree path, the branch, and the new issue state. Then wait for the next task.
 
-Check a pane with `hc get <name> | jq .labels` (the `dispatch.step` label) only when the user asks; `hc read <name>` shows its screen.
+Check a pane with `hc get <name> | jq .labels` (the `dispatch.step` label) only when the user asks; `hc read <name>` shows its screen. tmux: `tmux list-windows -t dispatch -F '#{window_name} #{@dispatch_step}'` and `tmux capture-pane -p -t dispatch:<name>`.
 
 ## Rules for every pane (the pane files hold the details)
 

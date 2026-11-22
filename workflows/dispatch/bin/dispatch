@@ -3,13 +3,13 @@ set -euo pipefail
 
 usage() {
   cat >&2 <<'EOF'
-dispatch: start one Claude pane for one task in the right herdr tab of this space.
-The pane runs the whole pipeline of the dispatch skill (references/pipeline.md).
+dispatch: start one Claude pane for one task: in the right herdr tab of this space, or in a tmux window
+when the caller is not in herdr. The pane runs the whole pipeline of the dispatch skill (references/pipeline.md).
 
 Usage:
   dispatch --type bug|feature|review|feedback|retro|monitor|init --name <slug> (--prompt <text> | --prompt-file <file>)
            [--branch <new-branch> | --on <branch> | --pr <number> | --no-worktree] [--plan | --no-plan]
-           [--repo <path>] [--space <id>]
+           [--repo <path>] [--space <id>] [--runner herdr|tmux]
 
   --type      bug -> Bugs, feature -> Features, review|feedback|retro -> Reviews, monitor -> Monitors, init -> Setup
   --name      short pane name: daw-123, pr-62, prod-logs (a-z 0-9 - _)
@@ -20,17 +20,19 @@ Usage:
   --plan, --no-plan  force or skip the plan step (default: the size rules of references/planning.md)
   --repo      repo path (default: the git repo of the current folder)
   --space     herdr space id (default: the space of the calling terminal)
+  --runner    herdr (default in a herdr terminal or with --space) or tmux (default elsewhere). tmux puts
+              each pane in a window of the session $DISPATCH_TMUX_SESSION (default "dispatch").
 
-Env: DISPATCH_MAX_PANES (default 4) panes per tab before "Bugs 2" opens.
-Agent command: "<YYYY-MM-DD> <command>" in $XDG_RUNTIME_DIR/dispatch-<space>.agent starts the agents
-of that space with <command> (for example claudet) on that day only. Default: claude.
+Env: DISPATCH_MAX_PANES (default 4) panes per herdr tab before "Bugs 2" opens. DISPATCH_RUNNER as --runner.
+Agent command: "<YYYY-MM-DD> <command>" in $XDG_RUNTIME_DIR/dispatch-<space>.agent (tmux: dispatch-tmux-<session>.agent)
+starts the agents of that space with <command> (for example claudet) on that day only. Default: claude.
 EOF
   exit 2
 }
 
 die() { echo "dispatch: $*" >&2; exit 1; }
 
-type= name= prompt= prompt_file= branch= on= pr= no_wt= repo= space= plan=
+type= name= prompt= prompt_file= branch= on= pr= no_wt= repo= space= plan= runner=${DISPATCH_RUNNER:-} session=
 while (($#)); do
   case $1 in
     --type) type=$2; shift 2 ;;
@@ -45,6 +47,7 @@ while (($#)); do
     --no-plan) plan=--no-plan; shift ;;
     --repo) repo=$2; shift 2 ;;
     --space) space=$2; shift 2 ;;
+    --runner) runner=$2; shift 2 ;;
     -h|--help) usage ;;
     *) die "unknown argument: $1" ;;
   esac
@@ -76,11 +79,29 @@ if ((picked == 0)); then
 fi
 max_panes=${DISPATCH_MAX_PANES:-4}
 
-if [[ -z $space ]]; then
-  [[ -n ${HC_TERMINAL_ID:-} ]] || die "not in a herdr terminal; pass --space"
-  space=$(hc get "$HC_TERMINAL_ID" | jq -r '.labels["herdr.space"] // empty')
-  [[ -n $space ]] || die "terminal $HC_TERMINAL_ID has no herdr.space label; pass --space"
+if [[ -z $runner ]]; then
+  if [[ -n $space || -n ${HC_TERMINAL_ID:-} ]]; then runner=herdr
+  elif command -v tmux >/dev/null; then runner=tmux
+  else die "not in a herdr terminal and tmux is not installed: start the dispatcher in herdr, pass --space, or install tmux"
+  fi
 fi
+case $runner in
+  herdr)
+    for t in hc herdr-app; do command -v "$t" >/dev/null || die "runner herdr needs $t; install herdr-app or use --runner tmux"; done
+    if [[ -z $space ]]; then
+      [[ -n ${HC_TERMINAL_ID:-} ]] || die "not in a herdr terminal; pass --space"
+      space=$(hc get "$HC_TERMINAL_ID" | jq -r '.labels["herdr.space"] // empty')
+      [[ -n $space ]] || die "terminal $HC_TERMINAL_ID has no herdr.space label; pass --space"
+    fi
+    ;;
+  tmux)
+    command -v tmux >/dev/null || die "runner tmux needs tmux"
+    [[ -z $space ]] || die "--space is a herdr option; do not use it with --runner tmux"
+    session=${DISPATCH_TMUX_SESSION:-dispatch}
+    [[ $session =~ ^[A-Za-z0-9_-]+$ ]] || die "DISPATCH_TMUX_SESSION must be letters, digits, - or _"
+    ;;
+  *) die "--runner must be herdr or tmux" ;;
+esac
 
 main_checkout=
 if [[ -n $repo ]] || git rev-parse --git-dir >/dev/null 2>&1; then
@@ -97,6 +118,17 @@ esac
 
 cwd=${main_checkout:-$PWD}
 wt_note=
+new_wt= new_branch= launched=
+cleanup() {
+  local rc=$?
+  [[ -z $launched && -n $new_wt ]] || return 0
+  git -C "$main_checkout" worktree remove --force "$new_wt" && echo "dispatch: removed the worktree $new_wt (the start failed)" >&2
+  [[ -z $new_branch ]] || { git -C "$main_checkout" branch -D "$new_branch" >/dev/null && echo "dispatch: removed the new branch $new_branch" >&2; }
+  return "$rc"
+}
+trap cleanup EXIT
+trap 'exit 130' INT TERM HUP
+
 if [[ -n $branch || -n $on || -n $pr ]]; then
   [[ -n $main_checkout ]] || die "not in a git repo; pass --repo"
   git -C "$main_checkout" fetch --quiet origin
@@ -115,15 +147,18 @@ if [[ -n $branch || -n $on || -n $pr ]]; then
   [[ ! -e $cwd ]] || die "$cwd already exists"
   if [[ -n $branch ]]; then
     git -C "$main_checkout" worktree add --quiet -b "$branch" "$cwd" "$default"
+    new_wt=$cwd new_branch=$branch
     wt_note="Your git worktree is ready: $cwd, on the new branch $branch from $default. Work only there. Do not create another worktree or branch for this task."
   elif [[ -n $on ]]; then
     git -C "$main_checkout" show-ref --verify --quiet "refs/remotes/origin/$on" || die "branch $on is not on origin; push it first"
     if git -C "$main_checkout" show-ref --verify --quiet "refs/heads/$on"; then
       git -C "$main_checkout" merge-base --is-ancestor "refs/heads/$on" "refs/remotes/origin/$on" || die "local $on has commits that origin/$on does not; push them first"
       git -C "$main_checkout" worktree add --quiet "$cwd" "$on" || die "cannot check out $on; another worktree may hold it"
+      new_wt=$cwd
       git -C "$cwd" merge --quiet --ff-only "origin/$on"
     else
       git -C "$main_checkout" worktree add --quiet --track -b "$on" "$cwd" "origin/$on"
+      new_wt=$cwd new_branch=$on
     fi
     wt_note="Your git worktree is ready: $cwd, on the existing branch $on (tracks origin/$on). Work only there. Do not create another worktree or branch for this task."
   else
@@ -134,13 +169,16 @@ if [[ -n $branch || -n $on || -n $pr ]]; then
     if [[ $(jq -r .isCrossRepository <<<"$info") == true ]]; then
       git -C "$main_checkout" fetch --quiet origin "pull/$pr/head"
       git -C "$main_checkout" worktree add --quiet --detach "$cwd" FETCH_HEAD
+      new_wt=$cwd
       wt_note="Your git worktree is ready: $cwd, detached at the head of PR #$pr (a PR from a fork). Work only there. PR author: $author. You (gh): $me."
     else
       git -C "$main_checkout" fetch --quiet origin "$head"
       if git -C "$main_checkout" show-ref --verify --quiet "refs/heads/$head"; then
         git -C "$main_checkout" worktree add --quiet "$cwd" "$head"
+        new_wt=$cwd
       else
         git -C "$main_checkout" worktree add --quiet --track -b "$head" "$cwd" "origin/$head"
+        new_wt=$cwd new_branch=$head
       fi
       wt_note="Your git worktree is ready: $cwd, on the PR #$pr branch $head (tracks origin/$head). Work only there. Do not create another worktree or branch for this task. PR author: $author. You (gh): $me."
     fi
@@ -165,63 +203,97 @@ full_prompt="$head
 
 $prompt"
 
-lock=${XDG_RUNTIME_DIR:-/tmp}/dispatch-$space.lock
-exec 9>"$lock"
-flock 9
-
-tree=$(herdr-app ls)
-jq -e --arg sp "$space" '.spaces[] | select(.id == $sp)' <<<"$tree" >/dev/null || die "space $space is not open in herdr"
-
-tab=$(jq -r --arg sp "$space" --arg base "$base" --argjson max "$max_panes" '
-  .spaces[] | select(.id == $sp) | .tabs[]
-  | select(.name | test("^" + $base + "( [0-9]+)?$"))
-  | select((.terminals | length) < $max) | .id' <<<"$tree" | head -n1)
-
-tab_name=
-if [[ -z $tab ]]; then
-  taken=$(jq -r --arg sp "$space" '.spaces[] | select(.id == $sp) | .tabs[].name' <<<"$tree")
-  tab_name=$base
-  n=2
-  while grep -qxF "$tab_name" <<<"$taken"; do tab_name="$base $n"; n=$((n + 1)); done
-  tab=tb$(head -c16 /dev/urandom | od -An -tx1 | tr -d ' \n')
+lock_key=$([[ $runner == herdr ]] && echo "$space" || echo "tmux-$session")
+lock=${XDG_RUNTIME_DIR:-/tmp}/dispatch-$lock_key.lock
+if command -v flock >/dev/null; then
+  exec 9>"$lock"
+  flock 9
 else
-  tab_name=$(jq -r --arg sp "$space" --arg tb "$tab" '.spaces[] | select(.id == $sp) | .tabs[] | select(.id == $tb) | .name' <<<"$tree")
+  until mkdir "$lock.d" 2>/dev/null; do sleep 0.2; done
 fi
-
-term_name=$name
-live=$(hc ls | jq -r '.terminals[] | select(.state == "live") | .name // empty')
-n=2
-while grep -qxF "$term_name" <<<"$live"; do term_name="$name-$n"; n=$((n + 1)); done
+unlock() {
+  if command -v flock >/dev/null; then exec 9>&-; else rmdir "$lock.d"; fi
+}
 
 agent_cmd=claude
-agent_override=${XDG_RUNTIME_DIR:-/tmp}/dispatch-$space.agent
+agent_override=${XDG_RUNTIME_DIR:-/tmp}/dispatch-$lock_key.agent
 if [[ -r $agent_override ]]; then
   read -r agent_day agent_alt _ <"$agent_override" || true
   if [[ ${agent_day:-} == "$(date +%F)" && -n ${agent_alt:-} ]]; then agent_cmd=$agent_alt; fi
 fi
 
 shell=$(command -v zsh || command -v bash)
-started=$(hc run --bg --json --keep --no-parent --cwd "$cwd" --name "$term_name" \
-  --label "herdr.space=$space" --label "herdr.tab=$tab" --label "dispatch.agent=1" \
-  -- "$shell" -ic '"$@"; exec "$0" -i' "$shell" env "DISPATCH_TASK_DIR=$task_dir" "DISPATCH_TYPE=$type" "$agent_cmd" "$full_prompt")
-terminal=$(jq -r .address <<<"$started")
 
-for _ in 1 2 3 4 5 6 7 8 9 10; do
-  herdr-app ls | jq -e --arg tb "$tab" '.spaces[].tabs[] | select(.id == $tb)' >/dev/null && break
-  sleep 0.3
-done
-current=$(herdr-app ls | jq -r --arg tb "$tab" '.spaces[].tabs[] | select(.id == $tb) | .name')
-[[ -n $current ]] || die "terminal $terminal started, but tab $tab did not show up"
-[[ $current == "$tab_name" ]] || herdr-app do tab.rename --id "$tab" --name "$tab_name" >/dev/null
+case $runner in
+  herdr)
+    tree=$(herdr-app ls)
+    jq -e --arg sp "$space" '.spaces[] | select(.id == $sp)' <<<"$tree" >/dev/null || die "space $space is not open in herdr"
 
-exec 9>&-
+    tab=$(jq -r --arg sp "$space" --arg base "$base" --argjson max "$max_panes" '
+      .spaces[] | select(.id == $sp) | .tabs[]
+      | select(.name | test("^" + $base + "( [0-9]+)?$"))
+      | select((.terminals | length) < $max) | .id' <<<"$tree" | head -n1)
 
-jq -n --arg tab "$tab_name" --arg tab_id "$tab" --arg terminal "$terminal" --arg name "$term_name" \
-  --arg cwd "$cwd" --arg branch "${branch:-$on}" --arg pr "$pr" --arg task_dir "$task_dir" \
-  '{tab: $tab, tab_id: $tab_id, terminal: $terminal, name: $name, cwd: $cwd, task_dir: $task_dir}
-   + (if $branch != "" then {branch: $branch} else {} end)
-   + (if $pr != "" then {pr: $pr} else {} end)'
+    tab_name=
+    if [[ -z $tab ]]; then
+      taken=$(jq -r --arg sp "$space" '.spaces[] | select(.id == $sp) | .tabs[].name' <<<"$tree")
+      tab_name=$base
+      n=2
+      while grep -qxF "$tab_name" <<<"$taken"; do tab_name="$base $n"; n=$((n + 1)); done
+      tab=tb$(head -c16 /dev/urandom | od -An -tx1 | tr -d ' \n')
+    else
+      tab_name=$(jq -r --arg sp "$space" --arg tb "$tab" '.spaces[] | select(.id == $sp) | .tabs[] | select(.id == $tb) | .name' <<<"$tree")
+    fi
 
-if [[ -n ${HC_TERMINAL_ID:-} ]] && hc get "$HC_TERMINAL_ID" 2>/dev/null | jq -e '.labels["dispatch.agent"] == "1"' >/dev/null; then
+    term_name=$name
+    live=$(hc ls | jq -r '.terminals[] | select(.state == "live") | .name // empty')
+    n=2
+    while grep -qxF "$term_name" <<<"$live"; do term_name="$name-$n"; n=$((n + 1)); done
+
+    started=$(hc run --bg --json --keep --no-parent --cwd "$cwd" --name "$term_name" \
+      --label "herdr.space=$space" --label "herdr.tab=$tab" --label "dispatch.agent=1" \
+      -- "$shell" -ic '"$@"; exec "$0" -i' "$shell" env -u DISPATCH_TERM -u DISPATCH_RUNNER -u DISPATCH_NAME "DISPATCH_TASK_DIR=$task_dir" "DISPATCH_TYPE=$type" "$agent_cmd" "$full_prompt" 9>&-)
+    launched=1
+    terminal=$(jq -r .address <<<"$started")
+
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+      herdr-app ls | jq -e --arg tb "$tab" '.spaces[].tabs[] | select(.id == $tb)' >/dev/null && break
+      sleep 0.3
+    done
+    current=$(herdr-app ls | jq -r --arg tb "$tab" '.spaces[].tabs[] | select(.id == $tb) | .name')
+    [[ -n $current ]] || die "terminal $terminal started, but tab $tab did not show up"
+    [[ $current == "$tab_name" ]] || herdr-app do tab.rename --id "$tab" --name "$tab_name" >/dev/null
+
+    unlock
+    jq -n --arg tab "$tab_name" --arg tab_id "$tab" --arg terminal "$terminal" --arg name "$term_name" \
+      --arg cwd "$cwd" --arg branch "${branch:-$on}" --arg pr "$pr" --arg task_dir "$task_dir" \
+      '{runner: "herdr", tab: $tab, tab_id: $tab_id, terminal: $terminal, name: $name, cwd: $cwd, task_dir: $task_dir}
+       + (if $branch != "" then {branch: $branch} else {} end)
+       + (if $pr != "" then {pr: $pr} else {} end)'
+    ;;
+  tmux)
+    tmux has-session -t "=$session" 2>/dev/null || tmux new-session -d -s "$session" -n dispatch -c "$HOME" 9>&-
+    taken=$(tmux list-windows -t "=$session" -F '#{window_name}')
+    term_name=$name
+    n=2
+    while grep -qxF "$term_name" <<<"$taken"; do term_name="$name-$n"; n=$((n + 1)); done
+    terminal=tmux-$session-$term_name
+    window=$(tmux new-window -d -P -F '#{window_id}' -t "=$session:" -n "$term_name" -c "$cwd" \
+      "$shell" -ic '"$@"; exec "$0" -i' "$shell" env -u HC_TERMINAL_ID "DISPATCH_RUNNER=tmux" "DISPATCH_TERM=$terminal" \
+      "DISPATCH_NAME=$term_name" "DISPATCH_TASK_DIR=$task_dir" "DISPATCH_TYPE=$type" "$agent_cmd" "$full_prompt" 9>&-)
+    launched=1
+    tmux set-option -w -t "$window" @dispatch_term "$terminal"
+    tmux set-option -w -t "$window" @dispatch_type "$type"
+    unlock
+    jq -n --arg session "$session" --arg window "$window" --arg terminal "$terminal" --arg name "$term_name" \
+      --arg cwd "$cwd" --arg branch "${branch:-$on}" --arg pr "$pr" --arg task_dir "$task_dir" --arg type "$type" \
+      '{runner: "tmux", session: $session, window: $window, terminal: $terminal, name: $name, cwd: $cwd, task_dir: $task_dir,
+        attach: "tmux attach -t \($session)"}
+       + (if $branch != "" then {branch: $branch} else {} end)
+       + (if $pr != "" then {pr: $pr} else {} end)'
+    ;;
+esac
+
+if [[ -n ${DISPATCH_TERM:-} ]] || { [[ -n ${HC_TERMINAL_ID:-} ]] && command -v hc >/dev/null && hc get "$HC_TERMINAL_ID" 2>/dev/null | jq -e '.labels["dispatch.agent"] == "1"' >/dev/null; }; then
   echo "dispatch: started pane $term_name for that task. It runs on its own; continue your own steps." >&2
 fi

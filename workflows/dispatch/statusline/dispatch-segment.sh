@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-term=${HC_TERMINAL_ID:-}
+term=${DISPATCH_TERM:-${HC_TERMINAL_ID:-}}
 [ -n "$term" ] || exit 0
 f=${XDG_RUNTIME_DIR:-/tmp}/dispatch-state/$term.json
 [ -r "$f" ] || exit 0

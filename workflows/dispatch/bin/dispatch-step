@@ -10,15 +10,15 @@ dispatch-step: record the pipeline step of this dispatch pane.
   dispatch-step --show
 
 It writes $XDG_RUNTIME_DIR/dispatch-state/<terminal>.json (the footer reads it),
-sets the herdr labels dispatch.step and dispatch.wait, appends to <task_dir>/steps.tsv,
-and with --wait sends one claude-tg ping (only when the wait text changes).
-Env: HC_TERMINAL_ID (herdr), DISPATCH_TASK_DIR (set by dispatch).
+sets the herdr labels dispatch.step and dispatch.wait (tmux: the window options @dispatch_step and @dispatch_wait),
+appends to <task_dir>/steps.tsv, and with --wait sends one claude-tg ping (only when the wait text changes).
+Env: DISPATCH_TERM (tmux) or HC_TERMINAL_ID (herdr), DISPATCH_TASK_DIR (set by dispatch).
 U
   exit 2
 }
 
 state_dir=${XDG_RUNTIME_DIR:-/tmp}/dispatch-state
-term=${HC_TERMINAL_ID:-}
+term=${DISPATCH_TERM:-${HC_TERMINAL_ID:-}}
 task_dir=${DISPATCH_TASK_DIR:-}
 
 summary() {
@@ -50,19 +50,24 @@ shift 2
 wait_msg=
 while (($#)); do
   case $1 in
-    --wait) wait_msg=${2:-waiting}; shift 2 ;;
+    --wait) (($# >= 2)) && [[ -n $2 ]] || { echo "dispatch-step: --wait needs the text of what you need from the user" >&2; exit 2; }
+      wait_msg=$2; shift 2 ;;
     *) usage ;;
   esac
 done
 waiting=0
 [[ -n $wait_msg ]] && waiting=1
 
-[[ -n $term ]] || { echo "dispatch-step: not in a herdr terminal (HC_TERMINAL_ID unset); step $n $label not recorded" >&2; exit 0; }
+[[ -n $term ]] || { echo "dispatch-step: not in a dispatch pane (DISPATCH_TERM and HC_TERMINAL_ID unset); step $n $label not recorded" >&2; exit 0; }
 mkdir -p "$state_dir"
 file=$state_dir/$term.json
 prev_msg=$(jq -r '.wait_msg // ""' "$file" 2>/dev/null || true)
 
-name=$(hc get "$term" 2>/dev/null | jq -r '.name // empty' || true)
+if [[ -n ${DISPATCH_TERM:-} ]]; then
+  name=${DISPATCH_NAME:-}
+else
+  name=$(hc get "$term" 2>/dev/null | jq -r '.name // empty' || true)
+fi
 tmp=$(mktemp "$state_dir/.XXXXXX")
 jq -n --argjson n "$n" --arg label "$label" --argjson waiting "$waiting" --arg wait_msg "$wait_msg" \
   --arg task_dir "$task_dir" --arg name "$name" --argjson since "$(date +%s)" \
@@ -73,8 +78,13 @@ if [[ -n $task_dir && -d $task_dir ]]; then
   printf '%s\t%s\t%s\t%s\n' "$(date +%s)" "$n" "$label" "$waiting" >>"$task_dir/steps.tsv"
 fi
 
-hc label "$term" "dispatch.step=$n/10 $label" "dispatch.wait=$waiting" >/dev/null 2>&1 \
-  || echo "dispatch-step: hc label failed for $term" >&2
+if [[ -n ${DISPATCH_TERM:-} ]]; then
+  { tmux set-option -w -t "${TMUX_PANE:-}" @dispatch_step "$n/10 $label" && tmux set-option -w -t "${TMUX_PANE:-}" @dispatch_wait "$waiting"; } >/dev/null 2>&1 \
+    || echo "dispatch-step: tmux set-option failed for $term" >&2
+else
+  hc label "$term" "dispatch.step=$n/10 $label" "dispatch.wait=$waiting" >/dev/null 2>&1 \
+    || echo "dispatch-step: hc label failed for $term" >&2
+fi
 
 if ((waiting)) && [[ $wait_msg != "$prev_msg" ]]; then
   repo=$(basename "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || echo /none/x)")")

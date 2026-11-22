@@ -1,6 +1,6 @@
 # dispatch
 
-A Claude Code workflow for herdr. One dispatcher session takes each task (a Linear issue, a PR, review comments, an error, a "watch the logs" job) and starts one Claude pane for it in the right herdr tab, with its own git worktree. That pane runs the whole pipeline with role sub-agents, each with a fixed model:
+A Claude Code workflow for herdr (or tmux). One dispatcher session takes each task (an issue, a PR, review comments, an error, a "watch the logs" job) and starts one Claude pane for it in the right herdr tab, or in a window of the tmux session `dispatch` outside herdr, with its own git worktree. That pane runs the whole pipeline with role sub-agents, each with a fixed model:
 
 ```
 1 intake -> 2 plan + grill (only for big tasks) -> 3 expected result (written before the code)
@@ -23,7 +23,7 @@ When a person finds a problem after a step said "done" (a review comment, a UI n
 - `skills/`: `grilling`, `domain-modeling`, `grill-with-docs`, vendored from [mattpocock/skills](https://github.com/mattpocock/skills) (MIT, commit `abeeaf9`)
 - `bin/` goes to `~/.local/bin` (symlinks)
   - `dispatch`: makes the worktree and the task folder, picks or makes the tab, and starts `claude` with the prompt
-  - `dispatch-step`: records the step of a pane (footer, herdr label, step log, ping on wait)
+  - `dispatch-step`: records the step of a pane (footer, herdr label or tmux window option, step log, ping on wait)
   - `dispatch-ui-diff`: compares the expected screen with the DOM text of a shot, plus a pixel diff
   - `dispatch-pr-overlap`: lists the other open PRs whose added lines use a function that this branch changed (step 8, no model)
   - `dispatch-eval`: prepares, runs (step `check`) and records the eval cases of the learn loop, also against a draft (`--skill`, `--agents`, `--config`) and across all repos (`--all-repos`)
@@ -47,16 +47,17 @@ The skill is generic. The facts of one repo (branch names, the gate, the tests, 
 
 ## Install
 
-1. Install `herdr`, `herdr-app` (it gives `hc`), `claude`, `gh`, `jq`, `git`, `python3`, ImageMagick (`magick`) and `tesseract`.
-2. Run `./install.sh`. It links the skill, the agents, the vendored skills, the scripts and the hook. It moves an existing file to `~/.local/state/dispatch/install-backup/<time>/` first.
-3. Add `dispatch-statusline` to your Claude status line command.
-4. Optional: add the `SessionStart` hook that `install.sh` prints.
+1. Install the required tools: `git`, `jq`, `claude`, and a runner: `herdr` with `herdr-app` (it gives `hc`), or `tmux`. `install.sh` stops when one is missing.
+2. Install the optional tools for the steps that use them (`install.sh` lists the missing ones): `gh` (PRs), `python3` (`dispatch-stats`, `dispatch-ui-diff`), ImageMagick (`magick`) and `tesseract` (UI e2e), `browser-harness` (web UI e2e), `claude-tg` (the ping), `timeout`, `flock`.
+3. Run `./install.sh`. It links the skill, the agents, the vendored skills, the scripts and the hook, and adds the `dispatch-context` SessionStart hook to `~/.claude/settings.json` (`--no-hook` skips that). It moves an existing file to `~/.local/state/dispatch/install-backup/<time>/` first.
+4. Add `dispatch-statusline` to your Claude status line command.
+5. Optional: add the dispatcher `SessionStart` hook that `install.sh` prints (herdr only).
 
 The skill also uses these tools when they are there: `linear-api` (Linear), `claude-tg` (the ping), and `browser-harness` (the UI e2e).
 
 ## Use
 
-In a herdr session, give the task to Claude, or type `/dispatch <task>`. The dispatcher runs, for example:
+In a herdr session, give the task to Claude, or type `/dispatch <task>`. Outside herdr, type `/dispatch <task>`; the pane opens in the tmux session `dispatch` (`tmux attach -t dispatch`). The dispatcher runs, for example:
 
 ```sh
 dispatch --type bug --name abc-123 --branch fix/abc-123-slippage --prompt-file prompt.md
