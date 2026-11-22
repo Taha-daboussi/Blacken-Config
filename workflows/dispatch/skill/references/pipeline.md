@@ -151,6 +151,8 @@ Follow `references/review.md`. It merges the newest `origin/<default>` first, ru
 
 `dispatch-step 9 manual-test --wait "test <issue key>"` · Reads: `test-env.md` ("Where the branch runs")
 
+This call also moves the pane to the "Manual Test" tab of its space, so the user finds every waiting test in one tab. The pane stays there for the rest of the task. When the move fails, tell the user the tab of the pane.
+
 A UI change is a change that a user can see: a screen, a message, a button, a text, a layout, a flow. Skip this step for a backend change with a green backend e2e, a clean review, and green tests. Also skip it when the user said "no manual test" for this task.
 
 1. Run the branch where BLACKFILE.md says the user tests. Keep it claimed until the end.

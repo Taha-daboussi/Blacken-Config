@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+die() { echo "dispatch-move-tab: $*" >&2; exit 1; }
+
+base=${1:-}
+if [[ -z $base || $base == -h || $base == --help ]]; then
+  cat >&2 <<'EOF'
+dispatch-move-tab <base>: move this herdr pane ($HC_TERMINAL_ID) to the tab "<base>" of its space.
+It uses the first "<base>" or "<base> N" tab with room (dispatch-pick-tab), or opens a new one.
+The program in the pane keeps running. A pane that is already in such a tab stays.
+EOF
+  exit 2
+fi
+
+term=${HC_TERMINAL_ID:-}
+[[ -n $term ]] || die "not in a herdr terminal (HC_TERMINAL_ID unset)"
+here=$(dirname "$(readlink -f "$0")")
+
+labels=$(hc get "$term" | jq -c '.labels')
+space=$(jq -r '.["herdr.space"] // empty' <<<"$labels")
+from=$(jq -r '.["herdr.tab"] // empty' <<<"$labels")
+[[ -n $space && -n $from ]] || die "terminal $term has no herdr.space or herdr.tab label"
+
+from_name=$(herdr-app ls | jq -r --arg tb "$from" '.spaces[].tabs[] | select(.id == $tb) | .name')
+if [[ $from_name =~ ^"$base"( [0-9]+)?$ ]]; then
+  echo "dispatch-move-tab: already in tab $from_name"
+  exit 0
+fi
+
+exec 9>"${XDG_RUNTIME_DIR:-/tmp}/dispatch-$space.lock"
+flock 9
+
+pick=$("$here/dispatch-pick-tab" "$space" "$base") || die "no tab picked in space $space"
+IFS=$'\t' read -r tab tab_name <<<"$pick"
+
+put_back() {
+  hc keep "$term" >/dev/null 2>&1 || echo "dispatch-move-tab: could not turn keep back on for $term" >&2
+  hc label "$term" "herdr.space=$space" "herdr.tab=$from" >/dev/null 2>&1 \
+    || echo "dispatch-move-tab: could not put $term back in tab $from_name; it has no pane now (hc attach $term)" >&2
+}
+trap 'put_back' ERR
+
+herdr-app do terminal.park --terminal "$term" >/dev/null
+parked=0
+for _ in $(seq 1 25); do
+  if ! hc get "$term" | jq -e '.labels["herdr.tab"]' >/dev/null; then parked=1; break; fi
+  sleep 0.2
+done
+((parked)) || { put_back; die "herdr did not park $term"; }
+
+hc keep "$term" >/dev/null
+hc label "$term" "herdr.space=$space" "herdr.tab=$tab" >/dev/null
+
+shown=0
+for _ in $(seq 1 25); do
+  if herdr-app ls | jq -e --arg tb "$tab" --arg t "$term" '.spaces[].tabs[] | select(.id == $tb) | .terminals[] | select(.terminal == $t)' >/dev/null; then shown=1; break; fi
+  sleep 0.2
+done
+((shown)) || { put_back; die "$term did not show up in tab $tab_name"; }
+trap - ERR
+
+current=$(herdr-app ls | jq -r --arg tb "$tab" '.spaces[].tabs[] | select(.id == $tb) | .name')
+[[ $current == "$tab_name" ]] || herdr-app do tab.rename --id "$tab" --name "$tab_name" >/dev/null
+
+echo "dispatch-move-tab: moved $term from tab $from_name to tab $tab_name"

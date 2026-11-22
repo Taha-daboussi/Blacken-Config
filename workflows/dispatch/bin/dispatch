@@ -22,7 +22,7 @@ Usage:
   --repo      repo path (default: the git repo of the current folder)
   --space     herdr space id (default: the space of the calling terminal)
 
-Env: DISPATCH_MAX_PANES (default 4) panes per tab before "UI Bugs 2" opens.
+Env: DISPATCH_MAX_PANES (default 4) panes per tab before "UI Bugs 2" opens (dispatch-pick-tab).
 Agent command: "<YYYY-MM-DD> <command>" in $XDG_RUNTIME_DIR/dispatch-<space>.agent starts the agents
 of that space with <command> (for example claudet) on that day only. Default: claude.
 EOF
@@ -78,7 +78,6 @@ if ((picked == 0)); then
     *) die "give one of --branch, --on, --pr, --no-worktree" ;;
   esac
 fi
-max_panes=${DISPATCH_MAX_PANES:-4}
 
 if [[ -z $space ]]; then
   [[ -n ${HC_TERMINAL_ID:-} ]] || die "not in a herdr terminal; pass --space"
@@ -173,24 +172,8 @@ lock=${XDG_RUNTIME_DIR:-/tmp}/dispatch-$space.lock
 exec 9>"$lock"
 flock 9
 
-tree=$(herdr-app ls)
-jq -e --arg sp "$space" '.spaces[] | select(.id == $sp)' <<<"$tree" >/dev/null || die "space $space is not open in herdr"
-
-tab=$(jq -r --arg sp "$space" --arg base "$base" --argjson max "$max_panes" '
-  .spaces[] | select(.id == $sp) | .tabs[]
-  | select(.name | test("^" + $base + "( [0-9]+)?$"))
-  | select((.terminals | length) < $max) | .id' <<<"$tree" | head -n1)
-
-tab_name=
-if [[ -z $tab ]]; then
-  taken=$(jq -r --arg sp "$space" '.spaces[] | select(.id == $sp) | .tabs[].name' <<<"$tree")
-  tab_name=$base
-  n=2
-  while grep -qxF "$tab_name" <<<"$taken"; do tab_name="$base $n"; n=$((n + 1)); done
-  tab=tb$(head -c16 /dev/urandom | od -An -tx1 | tr -d ' \n')
-else
-  tab_name=$(jq -r --arg sp "$space" --arg tb "$tab" '.spaces[] | select(.id == $sp) | .tabs[] | select(.id == $tb) | .name' <<<"$tree")
-fi
+pick=$("$(dirname "$(readlink -f "$0")")/dispatch-pick-tab" "$space" "$base") || die "space $space is not open in herdr"
+IFS=$'\t' read -r tab tab_name <<<"$pick"
 
 term_name=$name
 live=$(hc ls | jq -r '.terminals[] | select(.state == "live") | .name // empty')

@@ -44,6 +44,8 @@ The project facts live in a private file: `~/.config/dispatch/<name>/BLACKFILE.m
 | `monitor` | Monitors | watch our GitHub PRs, Slack, or Discord; watch logs, wait for an event, run a script at a set time or on a schedule |
 | `init` | Setup | a repo with no BLACKFILE.md, or "update BLACKFILE" |
 
+Manual Test is not a type. A UI pane moves itself into the "Manual Test" tab when it reaches the manual test (step 9), and finishes the task there.
+
 - UI or BE: a task with any change that a user can see is UI (`ui-bug`, `ui-feature`), also when it changes the backend too. Only a task with no visible change is BE (`be-bug`, `be-feature`).
 - An issue link: read it with the tool of "Issue tracker" in the BLACKFILE chunk `issues.md`. Label `Bug` -> a bug type. Label `Feature` or `Improvement` -> a feature type. No such label: decide from the title and the description. Then pick UI or BE by the rule above.
 - A GitHub PR URL: our PR with new comments -> feedback; a teammate's PR -> review.
