@@ -25,6 +25,7 @@ When a person finds a problem after a step said "done" (a review comment, a UI n
   - `dispatch`: makes the worktree and the task folder, picks or makes the tab, and starts `claude` with the prompt
   - `dispatch-step`: records the step of a pane (footer, herdr label, step log, ping on wait); at step 9 `manual-test` it moves the pane to the Manual Test tab
   - `dispatch-pick-tab`: picks the tab with room for the next pane of a type (`UI Bugs`, `UI Bugs 2`, ...)
+  - `dispatch-title`: sets the herdr pane title of the calling task pane (step 8 adds the PR number)
   - `dispatch-move-tab`: moves the calling pane to another tab of its space; the program keeps running
   - `dispatch-ui-diff`: compares the expected screen with the DOM text of a shot, plus a pixel diff
   - `dispatch-pr-overlap`: lists the other open PRs whose added lines use a function that this branch changed (step 8, no model)

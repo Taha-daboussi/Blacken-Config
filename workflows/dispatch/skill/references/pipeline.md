@@ -148,6 +148,7 @@ Follow `references/review.md`. It merges the newest `origin/<default>` first, ru
 
 1. `git fetch origin && git merge origin/<default>`. When the merge brings new commits, run the gate and the scoped tests again, and run a re-review of the merge (`references/review.md`, re-review) when a file of the branch changed on `main`.
 2. Push. Open a draft PR with `gh pr create --draft`. Follow "PR rules" and the repo PR template when it exists. The body has: Summary, Why, the e2e steps and results from `report.md`, the review result, the test result, and what is not tested.
+   Then put the PR number in the pane title: `dispatch-title "#<PR> $DISPATCH_TITLE"`. Skip it when `$DISPATCH_TITLE` already starts with `#`.
 3. Do the "draft PR opens" steps of BLACKFILE.md (issue state, board card link).
    Before the PR body: run `dispatch-pr-overlap` in the worktree. It prints each other open PR whose added lines use a function that this branch changed or added. For each hit, check that PR's use against the change; a screen of the same family goes into the PR body under "Other open PRs" and to the user, and a broken use is a P1 of this task or of that PR (tell the user which). Write "none" when it prints nothing.
 4. CI tests: when BLACKFILE.md "Tests" names a CI trigger, do it (for example post `/test` on the PR), then `gh pr checks <PR> --watch`. A red test check is a P1: read it with `gh run view <id> --log-failed` and send it to `dispatch-builder` as a fix round. After 3 red runs for the same cause: stop and ask the user.

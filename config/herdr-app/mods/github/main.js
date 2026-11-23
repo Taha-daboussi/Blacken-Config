@@ -153,7 +153,14 @@ export default class GitHub extends View {
       const seen = new Set();
       return [...data.open.nodes, ...data.done.nodes].filter((pr) => pr?.id && !seen.has(pr.id) && seen.add(pr.id));
     });
-    this.load(cx, this.inbox, async () => JSON.parse(await gh(["api", "notifications?all=true&per_page=50"])));
+    this.load(cx, this.inbox, async () => {
+      const [unread, recent] = await Promise.all([
+        gh(["api", "--paginate", "--slurp", "notifications?all=false&per_page=50"]).then((s) => JSON.parse(s).flat()),
+        gh(["api", "notifications?all=true&per_page=50"]).then((s) => JSON.parse(s)),
+      ]);
+      const byId = new Map([...recent, ...unread].map((n) => [n.id, n]));
+      return [...byId.values()];
+    });
   }
 
   load(cx, store, fetcher) {
@@ -330,7 +337,7 @@ export default class GitHub extends View {
         .tooltip(`${pr.comments.totalCount} comments, ${pr.reviewThreads.totalCount} review threads${open ? `, ${open} not resolved` : ""}`)
         .child(svg("mods/github/comment.svg").size(12))
         .child(open ? `${comments} · ${open} open` : String(comments))))
-      .child(div().flex_none().w(26).text_size(11).text_color(t.dim).child(ago(pr.updatedAt)));
+      .child(div().flex_none().w(34).truncate().text_size(11).text_color(t.dim).child(ago(pr.updatedAt)));
   }
 
   inboxRow(t, n) {
@@ -351,7 +358,7 @@ export default class GitHub extends View {
         .text_color(t.dim).hover((s) => s.bg(t.selected).text_color(t.foreground)).tooltip("Mark as read")
         .on_click((_e, cx) => { cx.stop_propagation(); this.markRead(cx, [n]); })
         .child(svg("mods/github/check.svg").size(13))))
-      .child(div().flex_none().w(26).text_size(11).text_color(t.dim).child(ago(n.updated_at)));
+      .child(div().flex_none().w(34).truncate().text_size(11).text_color(t.dim).child(ago(n.updated_at)));
   }
 
   body(t) {

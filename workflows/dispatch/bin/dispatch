@@ -8,12 +8,16 @@ The pane runs the whole pipeline of the dispatch skill (references/pipeline.md).
 
 Usage:
   dispatch --type ui-bug|be-bug|ui-feature|be-feature|review|feedback|retro|monitor|init --name <slug> (--prompt <text> | --prompt-file <file>)
+           [--title <pane title>]
            [--branch <new-branch> | --on <branch> | --pr <number> | --no-worktree] [--plan | --no-plan]
            [--repo <path>] [--space <id>]
 
   --type      ui-bug -> UI Bugs, be-bug -> BE Bugs, ui-feature -> UI Features, be-feature -> BE Features,
               feedback|retro -> Own Review, review -> Teammate Review, monitor -> Monitors, init -> Setup
   --name      short pane name: daw-123, pr-62, prod-logs (a-z 0-9 - _)
+  --title     pane title in herdr: "DAW-123 Chat loses the draft", "#62 DAW-123 Chat loses the draft"
+              (default for task types: "#<pr>" with --pr, else the name in upper case;
+              monitor, retro and init panes keep the title of Claude Code)
   --branch    new worktree on a new branch from origin's default branch (bug and feature types)
   --on        worktree on an existing pushed branch (a bug or feature type on an owner branch)
   --pr        worktree on the head branch of that PR (review, feedback); detached for a PR from a fork
@@ -31,11 +35,12 @@ EOF
 
 die() { echo "dispatch: $*" >&2; exit 1; }
 
-type= name= prompt= prompt_file= branch= on= pr= no_wt= repo= space= plan=
+type= name= title= prompt= prompt_file= branch= on= pr= no_wt= repo= space= plan=
 while (($#)); do
   case $1 in
     --type) type=$2; shift 2 ;;
     --name) name=$2; shift 2 ;;
+    --title) title=$2; shift 2 ;;
     --prompt) prompt=$2; shift 2 ;;
     --prompt-file) prompt_file=$2; shift 2 ;;
     --branch) branch=$2; shift 2 ;;
@@ -67,6 +72,13 @@ case $type in
   *) usage ;;
 esac
 [[ $name =~ ^[a-z0-9_-]{1,28}$ ]] || die "--name must be 1-28 of a-z 0-9 - _"
+title=${title//[$'\001'-$'\037'$'\177']/}
+case $type in
+  monitor|retro|init) [[ -z $title ]] || die "--title is for task panes only, not $type" ;;
+  *) if [[ -z $title ]]; then
+       if [[ -n $pr ]]; then title="#$pr"; else title=${name^^}; fi
+     fi ;;
+esac
 [[ -n $prompt_file ]] && prompt=$(<"$prompt_file")
 [[ -n $prompt ]] || die "give --prompt or --prompt-file"
 picked=0
@@ -187,10 +199,17 @@ if [[ -r $agent_override ]]; then
   if [[ ${agent_day:-} == "$(date +%F)" && -n ${agent_alt:-} ]]; then agent_cmd=$agent_alt; fi
 fi
 
+agent_args=()
+task_env=("DISPATCH_TASK_DIR=$task_dir" "DISPATCH_TYPE=$type")
+if [[ -n $title ]]; then
+  agent_args=(--name "$title")
+  task_env+=("DISPATCH_TITLE=$title")
+fi
+
 shell=$(command -v zsh || command -v bash)
 started=$(hc run --bg --json --keep --no-parent --cwd "$cwd" --name "$term_name" \
   --label "herdr.space=$space" --label "herdr.tab=$tab" --label "dispatch.agent=1" \
-  -- "$shell" -ic '"$@"; exec "$0" -i' "$shell" env "DISPATCH_TASK_DIR=$task_dir" "DISPATCH_TYPE=$type" "$agent_cmd" "$full_prompt")
+  -- "$shell" -ic '"$@"; exec "$0" -i' "$shell" env "${task_env[@]}" "$agent_cmd" "${agent_args[@]}" "$full_prompt")
 terminal=$(jq -r .address <<<"$started")
 
 for _ in 1 2 3 4 5 6 7 8 9 10; do
@@ -204,10 +223,11 @@ current=$(herdr-app ls | jq -r --arg tb "$tab" '.spaces[].tabs[] | select(.id ==
 exec 9>&-
 
 jq -n --arg tab "$tab_name" --arg tab_id "$tab" --arg terminal "$terminal" --arg name "$term_name" \
-  --arg cwd "$cwd" --arg branch "${branch:-$on}" --arg pr "$pr" --arg task_dir "$task_dir" \
+  --arg title "$title" --arg cwd "$cwd" --arg branch "${branch:-$on}" --arg pr "$pr" --arg task_dir "$task_dir" \
   '{tab: $tab, tab_id: $tab_id, terminal: $terminal, name: $name, cwd: $cwd, task_dir: $task_dir}
    + (if $branch != "" then {branch: $branch} else {} end)
-   + (if $pr != "" then {pr: $pr} else {} end)'
+   + (if $pr != "" then {pr: $pr} else {} end)
+   + (if $title != "" then {title: $title} else {} end)'
 
 if [[ -n ${HC_TERMINAL_ID:-} ]] && hc get "$HC_TERMINAL_ID" 2>/dev/null | jq -e '.labels["dispatch.agent"] == "1"' >/dev/null; then
   echo "dispatch: started pane $term_name for that task. It runs on its own; continue your own steps." >&2

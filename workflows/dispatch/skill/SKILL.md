@@ -66,7 +66,11 @@ Manual Test is not a type. A UI pane moves itself into the "Manual Test" tab whe
 
 ## 3. Name, worktree, and flags
 
-- `--name`: the issue key in lower case (`abc-123`), `pr-62`, or a 1-3 word slug.
+- `--name`: the issue key in lower case (`abc-123`), `pr-62`, or a 1-3 word slug. It is the address for `hc`.
+- `--title`: the pane title that the user sees in herdr, for every task type except monitor, retro, and init.
+  - No PR yet: the issue key and the issue title, `ABC-123 Chat loses the draft`. For more than one issue: all the keys, then the title of the first issue.
+  - The PR exists (review, feedback, `--on` an owner branch with a PR): `#62 ABC-123 Chat loses the draft`. A PR with no issue: `#62`.
+  - The pane adds the PR number itself when it opens the PR (`references/pipeline.md`, step 8).
 - a bug or feature type: `--branch <name by BLACKFILE.md "Names">` (default `fix/<key>-<slug>` or `feat/<key>-<slug>`).
 - review or feedback: `--pr <number>`. The worktree checks out the PR branch. For a PR of another repo, pass `--repo <local path>` or ask.
 - a bug or feature type on an owner branch: `--on <branch>` (it must be on origin, and no other worktree may hold it).
@@ -101,10 +105,10 @@ Other panes do these tasks. Do not work on them:
 Write the prompt to a file in your scratchpad, then run from the repo of this space:
 
 ```sh
-dispatch --type ui-bug --name abc-123 --branch fix/abc-123-slippage-check --prompt-file <file>
+dispatch --type ui-bug --name abc-123 --title "ABC-123 Slippage check is missing" --branch fix/abc-123-slippage-check --prompt-file <file>
 ```
 
-It prints JSON: `tab`, `terminal`, `name`, `cwd`, `task_dir`, and `branch` or `pr`. On an error (the worktree path exists, the space is not open, no BLACKFILE.md), report the error; do not work around it. The script puts the pane in the first tab of that type with fewer than 4 panes (`DISPATCH_MAX_PANES`), and opens `UI Bugs 2`, `UI Bugs 3`… when all are full. The user's view does not move.
+It prints JSON: `tab`, `terminal`, `name`, `title`, `cwd`, `task_dir`, and `branch` or `pr`. On an error (the worktree path exists, the space is not open, no BLACKFILE.md), report the error; do not work around it. The script puts the pane in the first tab of that type with fewer than 4 panes (`DISPATCH_MAX_PANES`), and opens `UI Bugs 2`, `UI Bugs 3`… when all are full. The user's view does not move.
 
 ## 5. Issue and board: work started
 
