@@ -29,24 +29,31 @@ git rev-parse --git-dir >/dev/null 2>&1 || die "not in a git repo"
 if [[ -z $base ]]; then
   base=$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null) || die "no origin/HEAD; pass --base"
 fi
-branch=$(git branch --show-current || true)
+branch=$(git branch --show-current)
 
-names=$(git diff -U0 "$base...HEAD" | grep -E '^[+-][^+-]' | sed -nE \
-  -e 's/^[+-]func (\([^)]*\) )?([A-Za-z_][A-Za-z0-9_]*).*/\2/p' \
+diff=$(git diff -U0 "$base...HEAD") || die "git diff $base...HEAD failed"
+names=$(sed -nE \
+  -e 's/^[+-]func \([^)]*\) ([A-Za-z_][A-Za-z0-9_]*).*/\1/p' \
+  -e '/^[+-]func (init|main)\(/d' \
+  -e 's/^[+-]func ([A-Za-z_][A-Za-z0-9_]*).*/\1/p' \
   -e 's/^[+-][[:space:]]*(export )?(async )?function\*? ?([A-Za-z_$][A-Za-z0-9_$]*).*/\3/p' \
   -e 's/^[+-][[:space:]]*(export )?const ([A-Za-z_$][A-Za-z0-9_$]*) = (async )?(\(|function).*/\2/p' \
-  -e 's/^[+-][[:space:]]*(async )?def ([A-Za-z_][A-Za-z0-9_]*).*/\2/p' \
-  | awk 'length($0) >= 4' | sort -u)
-[[ -n $names ]] || exit 0
-
-if [[ -z $prs ]]; then
-  prs=$(gh pr list --state open --limit 100 --json number,headRefName \
-    -q ".[] | select(.headRefName != \"$branch\") | .number") || die "gh pr list failed"
+  -e 's/^[+-][[:space:]]*(async )?def ([A-Za-z_][A-Za-z0-9_]*).*/\2/p' <<<"$diff" \
+  | awk 'length($0) >= 4 && $0 !~ /^__.*__$/' | sort -u)
+if [[ -z $names ]]; then
+  echo "dispatch-pr-overlap: the branch changes no function (Go, JS/TS, Python) against $base; nothing to check" >&2
+  exit 0
 fi
 
+if [[ -z $prs ]]; then
+  list=$(gh pr list --state open --limit 100 --json number,headRefName) || die "gh pr list failed"
+  prs=$(jq -r --arg b "$branch" '.[] | select(.headRefName != $b) | .number' <<<"$list") || die "cannot read the PR list"
+fi
+
+failed=()
 pattern=$(printf '%s\n' "$names" | paste -sd'|')
 for n in $prs; do
-  diff=$(gh pr diff "$n" 2>/dev/null) || { echo "dispatch-pr-overlap: gh pr diff $n failed" >&2; continue; }
+  prdiff=$(gh pr diff "$n") || { echo "dispatch-pr-overlap: gh pr diff $n failed" >&2; failed+=("$n"); continue; }
   awk -v pr="$n" -v pat="$pattern" '
     /^\+\+\+ b\// { file = substr($0, 7); next }
     /^\+/ && !/^\+\+\+/ {
@@ -56,5 +63,6 @@ for n in $prs; do
         gsub(/^[[:space:]]+/, "", line)
         printf "PR #%s %s: uses %s: %s\n", pr, file, hit, substr(line, 1, 120)
       }
-    }' <<<"$diff"
+    }' <<<"$prdiff"
 done
+((${#failed[@]} == 0)) || die "the check is not complete: gh pr diff failed for PR ${failed[*]}"

@@ -1,12 +1,43 @@
 #!/usr/bin/env bash
 set -euo pipefail
+
+norm() {
+  local p=$1 part out=()
+  [[ $p == /* ]] || p=$PWD/$p
+  IFS=/ read -ra parts <<<"$p"
+  for part in "${parts[@]}"; do
+    case $part in
+      ''|.) ;;
+      ..) ((${#out[@]} == 0)) || unset 'out[-1]' ;;
+      *) out+=("$part") ;;
+    esac
+  done
+  printf '/%s' "${out[@]}"
+}
+block() { echo "dispatch-guard-expected: $*" >&2; exit 2; }
+msg="expected.md is the target of this task and only dispatch-spec writes it. Stop and return the line that you think is wrong, with its source."
+
 input=$(cat)
-path=$(jq -r '.tool_input.file_path // .tool_input.notebook_path // empty' <<<"$input")
+tool=$(jq -r '.tool_name // empty' <<<"$input" 2>/dev/null) || block "cannot read the hook input as JSON; edit blocked"
+
+if [[ $tool == Bash ]]; then
+  cmd=$(jq -r '.tool_input.command // empty' <<<"$input") || block "cannot read the Bash command; blocked"
+  [[ $cmd == *expected.md* ]] || exit 0
+  bare=$(sed -E 's/[0-9]*>&[0-9-]//g; s/[0-9]*>>?[[:space:]]*\/dev\/null//g' <<<"$cmd")
+  if grep -Eq '>|\btee\b|\b(sed|perl|ruby)\b.*[[:space:]]-[a-zA-Z]*i|\b(mv|cp|rm|ln|dd|truncate|install|chmod|python3?|node)\b|git[[:space:]]+(checkout|restore|apply|reset)' <<<"$bare"; then
+    block "$msg (a Bash command that can change expected.md)"
+  fi
+  exit 0
+fi
+
+path=$(jq -r '.tool_input.file_path // .tool_input.notebook_path // empty' <<<"$input") || block "cannot read the file path; edit blocked"
 [[ -n $path ]] || exit 0
 [[ $(basename "$path") == expected.md ]] || exit 0
-case $path in
-  */.local/share/dispatch/*|"${DISPATCH_TASK_DIR:-/nonexistent}"/*)
-    echo "expected.md is the target of this task and only dispatch-spec writes it. Stop and return the line that you think is wrong, with its source." >&2
-    exit 2 ;;
+real=$(norm "$path")
+data=$(norm "${XDG_DATA_HOME:-$HOME/.local/share}/dispatch")
+task=${DISPATCH_TASK_DIR:+$(norm "$DISPATCH_TASK_DIR")}
+case $real in
+  "$data"/*) block "$msg" ;;
 esac
+if [[ -n $task && $real == "$task"/* ]]; then block "$msg"; fi
 exit 0

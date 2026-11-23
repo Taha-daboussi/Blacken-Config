@@ -28,8 +28,14 @@ if [[ $from_name =~ ^"$base"( [0-9]+)?$ ]]; then
   exit 0
 fi
 
-exec 9>"${XDG_RUNTIME_DIR:-/tmp}/dispatch-$space.lock"
-flock 9
+lock=${XDG_RUNTIME_DIR:-/tmp}/dispatch-$space.lock
+if command -v flock >/dev/null; then
+  exec 9>"$lock"
+  flock 9
+else
+  until mkdir "$lock.d" 2>/dev/null; do sleep 0.2; done
+  trap 'rmdir "$lock.d"' EXIT
+fi
 
 pick=$("$here/dispatch-pick-tab" "$space" "$base") || die "no tab picked in space $space"
 IFS=$'\t' read -r tab tab_name <<<"$pick"
