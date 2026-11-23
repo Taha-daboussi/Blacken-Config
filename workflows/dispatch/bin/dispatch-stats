@@ -1,149 +1,169 @@
 #!/usr/bin/env python3
-import argparse, glob, json, os, re, subprocess, sys
-from collections import defaultdict
+import argparse, glob, json, os, re, subprocess, sys, time
+from collections import OrderedDict, defaultdict
 from datetime import datetime
 
 IDLE = 600
-PHASES = ("build", "e2e", "review", "manual")
+
+
+def die(msg):
+    sys.exit(f"dispatch-stats: {msg}")
 
 
 def ts(s):
     return datetime.fromisoformat(s.replace("Z", "+00:00")).timestamp()
 
 
-def project_prefix():
+def main_checkout():
     try:
         common = subprocess.run(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
                                 capture_output=True, text=True, check=True).stdout.strip()
     except (OSError, subprocess.CalledProcessError):
-        sys.exit("dispatch-stats: run it inside a git repo, or pass --prefix")
-    return re.sub(r"[^A-Za-z0-9]", "-", os.path.dirname(common)) + "-"
+        die("run it inside a git repo of the task")
+    return os.path.dirname(common)
 
 
-def kind(name, inp):
-    if name == "Bash":
-        c = inp.get("command", "")
-        if "devbot" in c: return "devbot"
-        if "browser-harness" in c or "BU_NAME" in c: return "browser"
-        if re.search(r"\bgo (build|vet|test|run)\b", c): return "go"
-        return "bash"
-    if name in ("Agent", "Task"): return "subagent"
-    if name == "AskUserQuestion": return "ask"
-    return "other"
+def project_dir(cwd):
+    return os.path.join(os.path.expanduser("~/.claude/projects"), re.sub(r"[^A-Za-z0-9]", "-", cwd))
 
 
-def session(path):
-    times, uses, results = [], {}, {}
-    s = defaultdict(float)
-    for line in open(path, errors="ignore"):
-        try:
-            e = json.loads(line)
-        except ValueError:
-            continue
-        if e.get("type") not in ("user", "assistant") or not e.get("timestamp"):
-            continue
-        t = ts(e["timestamp"])
-        times.append(t)
-        c = (e.get("message") or {}).get("content")
-        if not isinstance(c, list):
-            continue
-        for b in c:
-            if b.get("type") == "tool_result":
-                results[b.get("tool_use_id")] = t
-            if e["type"] != "assistant" or b.get("type") != "tool_use":
+def read_steps(path):
+    rows = []
+    with open(path) as f:
+        for n, line in enumerate(f, 1):
+            parts = line.rstrip("\n").split("\t")
+            if len(parts) != 4 or not parts[0].isdigit():
+                die(f"{path}:{n}: not a steps.tsv line: {line.strip()!r}")
+            rows.append((int(parts[0]), parts[1], parts[2], parts[3] == "1"))
+    return rows
+
+
+def scan(path):
+    times, browser, uses = [], [], {}
+    with open(path, errors="replace") as f:
+        for line in f:
+            try:
+                e = json.loads(line)
+            except ValueError:
                 continue
-            inp = b.get("input") or {}
-            k = kind(b.get("name", ""), inp)
-            uses[b["id"]] = (t, k)
-            cmd = inp.get("command", "") if b.get("name") == "Bash" else ""
-            if k == "ask": s["questions"] += 1
-            if k == "devbot" and "devbot run" in cmd: s["devbot_runs"] += 1
-            if b.get("name") in ("Edit", "Write") and "/scratchpad/" not in inp.get("file_path", ""): s["edits"] += 1
-            if re.search(r"git commit\b", cmd): s["commits"] += 1
-    if not times:
-        return None
+            if e.get("type") not in ("user", "assistant") or not e.get("timestamp"):
+                continue
+            t = ts(e["timestamp"])
+            times.append(t)
+            content = (e.get("message") or {}).get("content")
+            if not isinstance(content, list):
+                continue
+            for b in content:
+                if b.get("type") == "tool_use" and b.get("name") == "Bash":
+                    cmd = (b.get("input") or {}).get("command", "")
+                    if "browser-harness" in cmd or "BU_NAME" in cmd:
+                        uses[b.get("id")] = t
+                elif b.get("type") == "tool_result" and b.get("tool_use_id") in uses:
+                    t0 = uses.pop(b["tool_use_id"])
+                    browser.append((t0, min(t - t0, 3600), "browser"))
+    return times, browser
+
+
+def read_events(folder):
+    times, spans = [], []
+    for path in glob.glob(os.path.join(folder, "*.jsonl")):
+        t, br = scan(path)
+        times += t
+        spans += br
+    for path in glob.glob(os.path.join(folder, "*", "subagents", "*.jsonl")):
+        t, br = scan(path)
+        spans += br
+        if t:
+            spans.append((min(t), max(t) - min(t), "subagent"))
     times.sort()
-    s["start"], s["end"] = times[0], times[-1]
-    s["wall"] = times[-1] - times[0]
-    s["active"] = sum(min(b - a, IDLE) for a, b in zip(times, times[1:]))
-    for i, (t0, k) in uses.items():
-        if i in results and k in ("go", "browser", "devbot", "ask"):
-            s[k + "_time"] += min(results[i] - t0, 3600)
-    return s
+    return times, spans
 
 
-def collect(prefix, root):
-    tasks = defaultdict(lambda: defaultdict(lambda: defaultdict(float)))
-    for d in sorted(os.listdir(root)):
-        if not d.startswith(prefix):
+def per_step(rows, times, spans, now):
+    out = OrderedDict()
+    for i, (t0, n, label, waiting) in enumerate(rows):
+        t1 = rows[i + 1][0] if i + 1 < len(rows) else (t0 if label == "closed" else max(now, t0))
+        s = out.setdefault(f"{n} {label}", defaultdict(float))
+        s["wall"] += t1 - t0
+        if waiting:
+            s["wait"] += t1 - t0
             continue
-        name, phase = d[len(prefix):], "build"
-        for p in ("e2e", "review", "manual"):
-            if name.endswith("-" + p):
-                name, phase = name[: -len(p) - 1], p
-        for f in glob.glob(os.path.join(root, d, "*.jsonl")):
-            s = session(f)
-            if not s:
-                continue
-            agg = tasks[name][phase]
-            for k, v in s.items():
-                if k == "start": agg[k] = min(agg.get(k) or v, v)
-                elif k == "end": agg[k] = max(agg.get(k, 0), v)
-                else: agg[k] += v
-    return tasks
+        inside = [t for t in times if t0 <= t < t1]
+        s["active"] += sum(min(b - a, IDLE) for a, b in zip(inside, inside[1:]))
+        for start, dur, k in spans:
+            if t0 <= start < t1:
+                s[k] += dur
+    return out
+
+
+def task(name, task_dir, main, now):
+    steps = os.path.join(task_dir, "steps.tsv")
+    if not os.path.isfile(steps):
+        return None
+    rows = read_steps(steps)
+    if not rows:
+        return None
+    slug = name[len(os.path.basename(main)) + 1:]
+    folder = project_dir(f"{main}-{slug}")
+    times, spans = read_events(folder) if os.path.isdir(folder) else ([], [])
+    return {"steps": per_step(rows, times, spans, now), "log": os.path.isdir(folder),
+            "last": f"{rows[-1][1]} {rows[-1][2]}"}
 
 
 def m(sec):
-    return int(sec // 60)
+    return str(int(sec // 60 + 0.5))
+
+
+def total(t, k):
+    return sum(s.get(k, 0) for s in t["steps"].values())
+
+
+def markdown(name, t):
+    lines = [f"Time per step for `{name}` (minutes; active time leaves out gaps over {IDLE // 60} min; parallel sub-agents add up):", "",
+             "| Step | Wall | Wait for the user | Active | Sub-agents | Browser |", "|---|---|---|---|---|---|"]
+    for step, s in t["steps"].items():
+        lines.append(f"| {step} | {m(s['wall'])} | {m(s.get('wait', 0))} | {m(s.get('active', 0))} | "
+                     f"{m(s.get('subagent', 0))} | {m(s.get('browser', 0))} |")
+    lines.append(f"| total | {m(total(t, 'wall'))} | {m(total(t, 'wait'))} | {m(total(t, 'active'))} | "
+                 f"{m(total(t, 'subagent'))} | {m(total(t, 'browser'))} |")
+    if not t["log"]:
+        lines += ["", "No session log found for this task: active, sub-agent and browser times are 0."]
+    return "\n".join(lines)
 
 
 def table(tasks):
-    head = ["task", "build", "e2e", "review", "manual", "total", "wall", "go", "browser", "devbot", "runs", "e2e_fixes", "asks", "ask_wait"]
-    rows = [head]
-    for name, ph in sorted(tasks.items(), key=lambda x: min(p.get("start", 0) for p in x[1].values())):
-        all_ = [ph[p] for p in PHASES if p in ph]
-        tot = lambda k: sum(p.get(k, 0) for p in all_)
-        e2e = ph.get("e2e", {})
-        rows.append([name[:32]] + [str(m(ph[p]["active"])) if p in ph else "-" for p in PHASES] + [
-            str(m(tot("active"))),
-            str(m(max(p["end"] for p in all_) - min(p["start"] for p in all_))),
-            str(m(tot("go_time"))), str(m(tot("browser_time"))), str(m(tot("devbot_time"))),
-            str(int(tot("devbot_runs"))),
-            str(int(e2e.get("edits", 0) + e2e.get("commits", 0))) if e2e else "-",
-            str(int(tot("questions"))), str(m(tot("ask_time")))])
+    head = ["task", "last step", "wall", "wait", "active", "subagents", "browser"]
+    rows = [head] + [[n[:40], t["last"], m(total(t, "wall")), m(total(t, "wait")), m(total(t, "active")),
+                      m(total(t, "subagent")), m(total(t, "browser"))] for n, t in tasks.items()]
     w = [max(len(r[i]) for r in rows) for i in range(len(head))]
     return "\n".join("  ".join(c.ljust(w[i]) for i, c in enumerate(r)) for r in rows)
 
 
-def markdown(name, ph):
-    lines = [f"Time per step for `{name}` (active minutes, idle gaps over {IDLE // 60} min left out):", "",
-             "| Step | Active | Go builds | Browser | devbot | Questions to the user |", "|---|---|---|---|---|---|"]
-    for p in PHASES:
-        if p not in ph:
-            continue
-        a = ph[p]
-        lines.append(f"| {p} | {m(a['active'])} | {m(a.get('go_time', 0))} | {m(a.get('browser_time', 0))} | "
-                     f"{m(a.get('devbot_time', 0))} ({int(a.get('devbot_runs', 0))} runs) | "
-                     f"{int(a.get('questions', 0))} ({m(a.get('ask_time', 0))} min wait) |")
-    return "\n".join(lines)
-
-
 def main():
-    ap = argparse.ArgumentParser(description="Time per dispatch step (build, e2e, review, manual) from the Claude session logs.")
-    ap.add_argument("filter", nargs="?", default="", help="only tasks whose name contains this text, e.g. daw-26")
-    ap.add_argument("--prefix", help="project folder prefix in ~/.claude/projects (default: from the git repo)")
-    ap.add_argument("--md", action="store_true", help="markdown table for one task, for a Linear comment")
+    ap = argparse.ArgumentParser(description="Time per pipeline step of dispatch tasks, from steps.tsv in the task "
+                                             "folder and the Claude session log of the task pane.")
+    ap.add_argument("filter", nargs="?", default="", help="only tasks whose slug contains this text, e.g. daw-26")
+    ap.add_argument("--md", action="store_true", help="markdown table for one task, for an issue comment")
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args()
-    tasks = collect(a.prefix or project_prefix(), os.path.expanduser("~/.claude/projects"))
-    tasks = {k: v for k, v in tasks.items() if a.filter in k}
+    main_dir = main_checkout()
+    root = os.path.join(os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share"), "dispatch")
+    prefix = os.path.basename(main_dir) + "-"
+    now = time.time()
+    tasks = {}
+    for d in sorted(glob.glob(os.path.join(root, prefix + "*")), key=os.path.getmtime):
+        name = os.path.basename(d)
+        if os.path.isdir(d) and a.filter in name[len(prefix):]:
+            t = task(name, d, main_dir, now)
+            if t:
+                tasks[name] = t
     if not tasks:
-        sys.exit(f"dispatch-stats: no task matches {a.filter!r}")
+        die(f"no task folder with steps.tsv matches {a.filter!r} in {root}")
     if a.json:
         print(json.dumps(tasks, indent=1))
     elif a.md:
         if len(tasks) != 1:
-            sys.exit(f"dispatch-stats: --md needs one task, {len(tasks)} match: {', '.join(tasks)}")
+            die(f"--md needs one task, {len(tasks)} match: {', '.join(tasks)}")
         print(markdown(*next(iter(tasks.items()))))
     else:
         print(table(tasks))

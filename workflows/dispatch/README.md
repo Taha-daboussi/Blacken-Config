@@ -33,7 +33,7 @@ When a person finds a problem after a step said "done" (a review comment, a UI n
   - `dispatch-draft`: puts a learn-loop mitigation on a draft branch (skill repo or private config repo), then applies or drops it after the user answers
   - `dispatch-guard-expected`: the hook that stops the builder from editing `expected.md`
   - `dispatch-close`: closes the pane of a dispatch task when it is done
-  - `dispatch-stats`: the time table of one task, from the Claude session logs
+  - `dispatch-stats`: the time per step of one task (wall, wait, active, sub-agents, browser), from `steps.tsv` and the Claude session logs
 - `statusline/dispatch-segment.sh` goes to `~/.local/bin/dispatch-statusline`: the footer part
 - `hooks/dispatch-main.sh` goes to `~/.claude/hooks`. Optional `SessionStart` hook: it tells each herdr session that `dispatch` did not start that it is the dispatcher.
 

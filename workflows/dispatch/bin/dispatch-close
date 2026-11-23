@@ -24,5 +24,12 @@ jq -e '.labels["dispatch.agent"] == "1"' >/dev/null <<<"$info" || die "$term is 
 
 echo "$now close $term $(jq -r '.name // ""' <<<"$info")" >>"$log"
 
-setsid -f bash -c 'sleep 2; hc keep "$0" --off; hc kill "$0"; hc rm "$0"' "$term" >>"$log" 2>&1 </dev/null
+closer=(bash -c 'sleep 2; hc keep "$0" --off; hc kill "$0"; hc rm "$0"' "$term")
+if command -v setsid >/dev/null; then
+  setsid -f "${closer[@]}" >>"$log" 2>&1 </dev/null
+elif command -v perl >/dev/null; then
+  perl -MPOSIX -e 'fork and exit; POSIX::setsid(); exec @ARGV or die "exec: $!"' "${closer[@]}" >>"$log" 2>&1 </dev/null
+else
+  die "needs setsid or perl to close $term after this process ends"
+fi
 echo "dispatch-close: $term closes in 2s"
