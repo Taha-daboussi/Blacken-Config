@@ -25,8 +25,7 @@ tools/        the repo scripts and the auto push units
     - `herdr-md`, `linear`, `over9k-usage`, `revive`, `space-switcher`, `tmux-prefix`
 - `claude/hooks/session-namer.sh` goes to `~/.claude/hooks`. It names each Claude Code session, for example `DAW-16 E2E test copytrade limit entry`. Herdr shows these names in the agents list.
 - `workflows/dispatch/`: one dispatcher session sends each task to one Claude pane in the right herdr tab, with its own git worktree; the pane runs the whole pipeline with role sub-agents. The private project files stay in `~/.config/dispatch/<repo>/BLACKFILE.md`, not here. See its README.
-- `workflows/slack-gw/`: watch a Slack workspace live over one websocket, read it, and reply in threads as yourself, with no Slack app. Also the agent flow: watch, draft, reply in the thread. See its README.
-- `workflows/discord-gw/`: the read-only Discord listener with the same `read` / `wait` / `thread` commands. See its README.
+- `slack-gw` and `discord-gw` moved to their own repos: [slack-gw](https://github.com/Taha-daboussi/slack-gw) (watch Slack over one websocket and reply in threads) and [discord-gw](https://github.com/Taha-daboussi/discord-gw) (read-only Discord listener). Clone each to `~/<tool>` and run its `install.sh`.
 - `tools/`
   - `sync.sh`: copies the current settings into the repo
   - `install.sh`: copies the repo settings onto a machine
