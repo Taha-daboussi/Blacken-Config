@@ -50,22 +50,48 @@ function priorityIcon(p) {
   return `mods/linear/pr-${p ?? 0}.svg`;
 }
 
+const STEPS_MS = 3000;
+
+function issueKeys(strings) {
+  const keys = new Set();
+  for (const s of strings) {
+    if (!s) continue;
+    for (const m of s.matchAll(/(?:^|[^a-z0-9])([a-z]{2,10}-\d+)(?!\d)/gi)) keys.add(m[1].toUpperCase());
+  }
+  return keys;
+}
+
 function agentsByIssue() {
   const terms = new Map(terminals().map((t) => [t.address, t]));
   const byKey = new Map();
   for (const a of agents()) {
     const t = terms.get(a.address);
-    const keys = new Set();
-    for (const s of [a.title, t?.name, t?.cwd, t?.labels?.["herdr.summary"]]) {
-      if (!s) continue;
-      for (const m of s.matchAll(/(?:^|[^a-z0-9])([a-z]{2,10}-\d+)(?!\d)/gi)) keys.add(m[1].toUpperCase());
-    }
-    for (const k of keys) {
+    const labels = t?.labels ?? {};
+    const live = /^(\d{1,2})\/\d+\s+(.*)$/.exec(labels["dispatch.step"] ?? "");
+    const entry = { ...a, step: live ? { n: Number(live[1]), label: live[2], waiting: labels["dispatch.wait"] === "1" } : null };
+    for (const k of issueKeys([a.title, t?.name, t?.cwd, labels["herdr.summary"]])) {
       if (!byKey.has(k)) byKey.set(k, []);
-      byKey.get(k).push(a);
+      byKey.get(k).push(entry);
     }
   }
   return byKey;
+}
+
+function savedStepsByIssue(records) {
+  const byKey = new Map();
+  for (const r of Object.values(records ?? {})) {
+    if (!Number.isInteger(r?.n)) continue;
+    for (const k of issueKeys([r.name, r.title, r.cwd])) {
+      if (!byKey.has(k) || (byKey.get(k).since ?? 0) < (r.since ?? 0)) byKey.set(k, r);
+    }
+  }
+  return byKey;
+}
+
+function ago(sec) {
+  if (!sec) return "";
+  const m = Math.max(0, Math.round((Date.now() / 1000 - sec) / 60));
+  return m < 60 ? `${m} min ago` : m < 2880 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} days ago`;
 }
 
 async function dispatchIssue(ws, issue) {
@@ -162,10 +188,52 @@ export default class Linear extends View {
     this.picked = null;
     this.collapsed = new Set();
     this.dirtyAt = shared("linear.dirty")?.at ?? 0;
+    this.steps = new Map();
+    this.stepsText = null;
+    this.stepsError = null;
     if (checking()) return;
     cx.timer.every(REFRESH_MS, (cx) => this.refreshAll(cx));
     cx.timer.every(1500, (cx) => this.checkDirty(cx));
+    cx.timer.every(STEPS_MS, (cx) => this.loadSteps(cx));
     this.refreshAll(cx);
+    this.loadSteps(cx);
+  }
+
+  loadSteps(cx) {
+    const path = `${home()}/.local/share/dispatch/steps.json`;
+    cx.spawn(async (cx) => {
+      try {
+        const text = await readTextFile(path);
+        if (text === this.stepsText) return;
+        this.steps = text ? savedStepsByIssue(JSON.parse(text)) : new Map();
+        this.stepsText = text;
+        this.stepsError = null;
+      } catch (e) {
+        const msg = `Dispatch steps (${path}): ${e?.message ?? e}`;
+        if (msg !== this.stepsError) notify({ title: "Linear", body: msg, level: "error" });
+        this.stepsError = msg;
+      }
+      cx.notify();
+    });
+  }
+
+  stepBadge(t, issue, busy) {
+    const live = busy.find((a) => a.step)?.step;
+    const saved = this.steps.get(issue.identifier.toUpperCase());
+    const step = live ?? (saved ? { n: saved.n, label: saved.label, waiting: saved.waiting } : null);
+    if (busy.length === 0 && !step) return null;
+    const open = busy.length > 0;
+    const color = !open ? t.dim : step?.waiting ? t.blocked : busy.some((a) => a.status === "working") ? t.working : t.muted;
+    const where = busy.map((a) => `${a.space_name} / ${a.tab_name}: ${a.title}`);
+    const stepLine = !step ? null
+      : open ? `Step ${step.n}/10 ${step.label}${step.waiting ? " · waits for you" : ""}`
+      : `Stopped at step ${step.n}/10 ${step.label}${step.waiting ? " (was waiting for you)" : ""} · pane closed · ${ago(saved?.since)}`;
+    const waitMsg = step?.waiting ? (saved?.wait_msg && saved.n === step.n ? saved.wait_msg : null) : null;
+    return h_flex().id(`bot-${issue.id}`).flex_none().gap(3).items_center()
+      .tooltip([stepLine, waitMsg, ...where].filter(Boolean).join("\n"))
+      .when(open, (el) => el.on_click((_e, cx) => { cx.stop_propagation(); run("pane.focus", { pane: busy[0].pane }); }))
+      .child(svg("mods/linear/bot.svg").size(14).text_color(color))
+      .when(Boolean(step), (el) => el.child(div().text_size(11).font_semibold().text_color(color).child(`${step.n}${step.waiting ? "⏳" : ""}`)));
   }
 
   refreshAll(cx) {
@@ -246,6 +314,7 @@ export default class Linear extends View {
 
   issueRow(t, ws, issue, byIssue) {
     const busy = byIssue.get(issue.identifier.toUpperCase()) ?? [];
+    const badge = this.stepBadge(t, issue, busy);
     return h_flex().id(`is-${issue.id}`).h(30).px(8).gap(8).flex_none().items_center().rounded(7).cursor_pointer()
       .hover((s) => s.bg(t.hover))
       .on_click((_e, cx) => cx.open_url(issue.url))
@@ -254,10 +323,7 @@ export default class Linear extends View {
         .child(svg(priorityIcon(issue.priority)).size(13).text_color(issue.priority === 1 ? "#f2994a" : t.muted)))
       .child(div().flex_none().w(62).truncate().text_size(11.5).text_color(t.dim).child(issue.identifier))
       .child(div().flex_1().min_w(0).truncate().text_color(t.foreground).child(issue.title))
-      .when(busy.length > 0, (el) => el.child(h_flex().id(`bot-${issue.id}`).flex_none().gap(3).items_center()
-        .tooltip(busy.map((a) => `${a.space_name} / ${a.tab_name}: ${a.title}`).join("\n"))
-        .on_click((_e, cx) => { cx.stop_propagation(); run("pane.focus", { pane: busy[0].pane }); })
-        .child(svg("mods/linear/bot.svg").size(14).text_color(busy.some((a) => a.status === "working") ? t.working : t.muted))))
+      .when(Boolean(badge), (el) => el.child(badge))
       .child(h_flex().id(`act-${issue.id}`).size(22).flex_none().items_center().justify_center().rounded(6)
         .text_color(t.dim).hover((s) => s.bg(t.selected).text_color(t.foreground)).tooltip("Status, priority, dispatch")
         .on_click((_e, cx) => { cx.stop_propagation(); this.openMenu(ws, issue); })
