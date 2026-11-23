@@ -151,6 +151,13 @@
                           "content": {
                             "mod": "linear"
                           }
+                        },
+                        {
+                          "id": "github",
+                          "type": "block",
+                          "content": {
+                            "mod": "github"
+                          }
                         }
                       ],
                       "active": "files"
