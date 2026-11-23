@@ -12,6 +12,7 @@ dispatch-step: record the pipeline step of this dispatch pane.
 It writes $XDG_RUNTIME_DIR/dispatch-state/<terminal>.json (the footer reads it),
 sets the herdr labels dispatch.step and dispatch.wait (tmux: the window options @dispatch_step and @dispatch_wait),
 appends to <task_dir>/steps.tsv, and with --wait sends one claude-tg ping (only when the wait text changes).
+In herdr, step label manual-test with --wait first moves the pane to the "Manual Test" tab (dispatch-move-tab).
 Env: DISPATCH_TERM (tmux) or HC_TERMINAL_ID (herdr), DISPATCH_TASK_DIR (set by dispatch).
 U
   exit 2
@@ -84,6 +85,11 @@ if [[ -n ${DISPATCH_TERM:-} ]]; then
 else
   hc label "$term" "dispatch.step=$n/10 $label" "dispatch.wait=$waiting" >/dev/null 2>&1 \
     || echo "dispatch-step: hc label failed for $term" >&2
+fi
+
+if ((waiting)) && [[ $label == manual-test && -z ${DISPATCH_TERM:-} ]]; then
+  "$(dirname "$(readlink -f "$0")")/dispatch-move-tab" "Manual Test" \
+    || echo "dispatch-step: could not move $term to the Manual Test tab; tell the user where the pane is" >&2
 fi
 
 if ((waiting)) && [[ $wait_msg != "$prev_msg" ]]; then

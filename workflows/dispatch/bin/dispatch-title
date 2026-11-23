@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat >&2 <<'EOF'
+dispatch-title: set the title of the herdr pane that runs this task.
+Run it from inside a dispatch task pane (any child process of its Claude session).
+
+Usage: dispatch-title <title>
+Example: dispatch-title "#212 $DISPATCH_TITLE"
+EOF
+  exit 2
+}
+
+(($#)) || usage
+[[ $1 == -h || $1 == --help ]] && usage
+title=$*
+title=${title//[$'\001'-$'\037'$'\177']/}
+[[ -n $title ]] || usage
+
+pid=$$
+while ((pid > 1)); do
+  tty=$(readlink "/proc/$pid/fd/0" 2>/dev/null || true)
+  if [[ $tty == /dev/pts/* && -w $tty ]]; then
+    printf '\033]0;%s\007' "$title" >"$tty"
+    echo "dispatch-title: pane title is now: $title" >&2
+    exit 0
+  fi
+  pid=$(ps -o ppid= -p "$pid" | tr -d ' ')
+  [[ -n $pid ]] || break
+done
+echo "dispatch-title: no terminal found above process $$; run it inside a dispatch task pane" >&2
+exit 1

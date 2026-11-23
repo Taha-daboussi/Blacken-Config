@@ -7,14 +7,19 @@ dispatch: start one Claude pane for one task: in the right herdr tab of this spa
 when the caller is not in herdr. The pane runs the whole pipeline of the dispatch skill (references/pipeline.md).
 
 Usage:
-  dispatch --type bug|feature|review|feedback|retro|monitor|init --name <slug> (--prompt <text> | --prompt-file <file>)
+  dispatch --type ui-bug|be-bug|ui-feature|be-feature|review|feedback|retro|monitor|init --name <slug> (--prompt <text> | --prompt-file <file>)
+           [--title <pane title>]
            [--branch <new-branch> | --on <branch> | --pr <number> | --no-worktree] [--plan | --no-plan]
            [--repo <path>] [--space <id>] [--runner herdr|tmux]
 
-  --type      bug -> Bugs, feature -> Features, review|feedback|retro -> Reviews, monitor -> Monitors, init -> Setup
+  --type      ui-bug -> UI Bugs, be-bug -> BE Bugs, ui-feature -> UI Features, be-feature -> BE Features,
+              feedback|retro -> Own Review, review -> Teammate Review, monitor -> Monitors, init -> Setup
   --name      short pane name: daw-123, pr-62, prod-logs (a-z 0-9 - _)
-  --branch    new worktree on a new branch from origin's default branch (bug, feature)
-  --on        worktree on an existing pushed branch (bug or feature on an owner branch)
+  --title     pane title in herdr: "DAW-123 Chat loses the draft", "#62 DAW-123 Chat loses the draft"
+              (default for task types: "#<pr>" with --pr, else the name in upper case;
+              monitor, retro and init panes keep the title of Claude Code)
+  --branch    new worktree on a new branch from origin's default branch (bug and feature types)
+  --on        worktree on an existing pushed branch (a bug or feature type on an owner branch)
   --pr        worktree on the head branch of that PR (review, feedback); detached for a PR from a fork
   --no-worktree  run in the repo's main checkout (default for monitor, retro, init)
   --plan, --no-plan  force or skip the plan step (default: the size rules of references/planning.md)
@@ -23,7 +28,8 @@ Usage:
   --runner    herdr (default in a herdr terminal or with --space) or tmux (default elsewhere). tmux puts
               each pane in a window of the session $DISPATCH_TMUX_SESSION (default "dispatch").
 
-Env: DISPATCH_MAX_PANES (default 4) panes per herdr tab before "Bugs 2" opens. DISPATCH_RUNNER as --runner.
+Env: DISPATCH_MAX_PANES (default 4) panes per herdr tab before "UI Bugs 2" opens (dispatch-pick-tab).
+DISPATCH_RUNNER as --runner.
 Agent command: "<YYYY-MM-DD> <command>" in $XDG_RUNTIME_DIR/dispatch-<space>.agent (tmux: dispatch-tmux-<session>.agent)
 starts the agents of that space with <command> (for example claudet) on that day only. Default: claude.
 EOF
@@ -32,11 +38,12 @@ EOF
 
 die() { echo "dispatch: $*" >&2; exit 1; }
 
-type= name= prompt= prompt_file= branch= on= pr= no_wt= repo= space= plan= runner=${DISPATCH_RUNNER:-} session=
+type= name= title= prompt= prompt_file= branch= on= pr= no_wt= repo= space= plan= runner=${DISPATCH_RUNNER:-} session=
 while (($#)); do
   case $1 in
     --type) type=$2; shift 2 ;;
     --name) name=$2; shift 2 ;;
+    --title) title=$2; shift 2 ;;
     --prompt) prompt=$2; shift 2 ;;
     --prompt-file) prompt_file=$2; shift 2 ;;
     --branch) branch=$2; shift 2 ;;
@@ -55,17 +62,27 @@ done
 
 skill=$HOME/.claude/skills/dispatch
 case $type in
-  bug) base=Bugs; guide=references/pipeline.md ;;
-  feature) base=Features; guide=references/pipeline.md ;;
-  review) base=Reviews; guide=references/review.md ;;
-  feedback) base=Reviews; guide=references/feedback.md ;;
-  retro) base=Reviews; guide=references/retro.md ;;
+  ui-bug) base="UI Bugs"; guide=references/pipeline.md ;;
+  be-bug) base="BE Bugs"; guide=references/pipeline.md ;;
+  ui-feature) base="UI Features"; guide=references/pipeline.md ;;
+  be-feature) base="BE Features"; guide=references/pipeline.md ;;
+  review) base="Teammate Review"; guide=references/review.md ;;
+  feedback) base="Own Review"; guide=references/feedback.md ;;
+  retro) base="Own Review"; guide=references/retro.md ;;
   monitor) base=Monitors; guide= ;;
   init) base=Setup; guide=references/init.md ;;
+  bug|feature) die "type $type is gone: use ui-$type or be-$type (a task with any visible change is ui-$type)" ;;
   e2e|manual) die "type $type is gone: the task pane runs e2e and the manual test itself (references/pipeline.md)" ;;
   *) usage ;;
 esac
 [[ $name =~ ^[a-z0-9_-]{1,28}$ ]] || die "--name must be 1-28 of a-z 0-9 - _"
+title=${title//[$'\001'-$'\037'$'\177']/}
+case $type in
+  monitor|retro|init) [[ -z $title ]] || die "--title is for task panes only, not $type" ;;
+  *) if [[ -z $title ]]; then
+       if [[ -n $pr ]]; then title="#$pr"; else title=${name^^}; fi
+     fi ;;
+esac
 [[ -n $prompt_file ]] && prompt=$(<"$prompt_file")
 [[ -n $prompt ]] || die "give --prompt or --prompt-file"
 picked=0
@@ -77,7 +94,6 @@ if ((picked == 0)); then
     *) die "give one of --branch, --on, --pr, --no-worktree" ;;
   esac
 fi
-max_panes=${DISPATCH_MAX_PANES:-4}
 
 if [[ -z $runner ]]; then
   if [[ -n $space || -n ${HC_TERMINAL_ID:-} ]]; then runner=herdr
@@ -222,28 +238,19 @@ if [[ -r $agent_override ]]; then
   if [[ ${agent_day:-} == "$(date +%F)" && -n ${agent_alt:-} ]]; then agent_cmd=$agent_alt; fi
 fi
 
+agent_args=()
+task_env=("DISPATCH_TASK_DIR=$task_dir" "DISPATCH_TYPE=$type")
+if [[ -n $title ]]; then
+  agent_args=(--name "$title")
+  task_env+=("DISPATCH_TITLE=$title")
+fi
+
 shell=$(command -v zsh || command -v bash)
 
 case $runner in
   herdr)
-    tree=$(herdr-app ls)
-    jq -e --arg sp "$space" '.spaces[] | select(.id == $sp)' <<<"$tree" >/dev/null || die "space $space is not open in herdr"
-
-    tab=$(jq -r --arg sp "$space" --arg base "$base" --argjson max "$max_panes" '
-      .spaces[] | select(.id == $sp) | .tabs[]
-      | select(.name | test("^" + $base + "( [0-9]+)?$"))
-      | select((.terminals | length) < $max) | .id' <<<"$tree" | head -n1)
-
-    tab_name=
-    if [[ -z $tab ]]; then
-      taken=$(jq -r --arg sp "$space" '.spaces[] | select(.id == $sp) | .tabs[].name' <<<"$tree")
-      tab_name=$base
-      n=2
-      while grep -qxF "$tab_name" <<<"$taken"; do tab_name="$base $n"; n=$((n + 1)); done
-      tab=tb$(head -c16 /dev/urandom | od -An -tx1 | tr -d ' \n')
-    else
-      tab_name=$(jq -r --arg sp "$space" --arg tb "$tab" '.spaces[] | select(.id == $sp) | .tabs[] | select(.id == $tb) | .name' <<<"$tree")
-    fi
+    pick=$("$(dirname "$(readlink -f "$0")")/dispatch-pick-tab" "$space" "$base") || die "space $space is not open in herdr"
+    IFS=$'\t' read -r tab tab_name <<<"$pick"
 
     term_name=$name
     live=$(hc ls | jq -r '.terminals[] | select(.state == "live") | .name // empty')
@@ -252,7 +259,8 @@ case $runner in
 
     started=$(hc run --bg --json --keep --no-parent --cwd "$cwd" --name "$term_name" \
       --label "herdr.space=$space" --label "herdr.tab=$tab" --label "dispatch.agent=1" \
-      -- "$shell" -ic '"$@"; exec "$0" -i' "$shell" env -u DISPATCH_TERM -u DISPATCH_RUNNER -u DISPATCH_NAME "DISPATCH_TASK_DIR=$task_dir" "DISPATCH_TYPE=$type" "$agent_cmd" "$full_prompt" 9>&-)
+      -- "$shell" -ic '"$@"; exec "$0" -i' "$shell" env -u DISPATCH_TERM -u DISPATCH_RUNNER -u DISPATCH_NAME \
+      "${task_env[@]}" "$agent_cmd" "${agent_args[@]}" "$full_prompt" 9>&-)
     launched=1
     terminal=$(jq -r .address <<<"$started")
 
@@ -266,10 +274,11 @@ case $runner in
 
     unlock
     jq -n --arg tab "$tab_name" --arg tab_id "$tab" --arg terminal "$terminal" --arg name "$term_name" \
-      --arg cwd "$cwd" --arg branch "${branch:-$on}" --arg pr "$pr" --arg task_dir "$task_dir" \
+      --arg title "$title" --arg cwd "$cwd" --arg branch "${branch:-$on}" --arg pr "$pr" --arg task_dir "$task_dir" \
       '{runner: "herdr", tab: $tab, tab_id: $tab_id, terminal: $terminal, name: $name, cwd: $cwd, task_dir: $task_dir}
        + (if $branch != "" then {branch: $branch} else {} end)
-       + (if $pr != "" then {pr: $pr} else {} end)'
+       + (if $pr != "" then {pr: $pr} else {} end)
+       + (if $title != "" then {title: $title} else {} end)'
     ;;
   tmux)
     tmux has-session -t "=$session" 2>/dev/null || tmux new-session -d -s "$session" -n dispatch -c "$HOME" 9>&-
@@ -280,17 +289,18 @@ case $runner in
     terminal=tmux-$session-$term_name
     window=$(tmux new-window -d -P -F '#{window_id}' -t "=$session:" -n "$term_name" -c "$cwd" \
       "$shell" -ic '"$@"; exec "$0" -i' "$shell" env -u HC_TERMINAL_ID "DISPATCH_RUNNER=tmux" "DISPATCH_TERM=$terminal" \
-      "DISPATCH_NAME=$term_name" "DISPATCH_TASK_DIR=$task_dir" "DISPATCH_TYPE=$type" "$agent_cmd" "$full_prompt" 9>&-)
+      "DISPATCH_NAME=$term_name" "${task_env[@]}" "$agent_cmd" "${agent_args[@]}" "$full_prompt" 9>&-)
     launched=1
     tmux set-option -w -t "$window" @dispatch_term "$terminal"
     tmux set-option -w -t "$window" @dispatch_type "$type"
     unlock
     jq -n --arg session "$session" --arg window "$window" --arg terminal "$terminal" --arg name "$term_name" \
-      --arg cwd "$cwd" --arg branch "${branch:-$on}" --arg pr "$pr" --arg task_dir "$task_dir" --arg type "$type" \
+      --arg title "$title" --arg cwd "$cwd" --arg branch "${branch:-$on}" --arg pr "$pr" --arg task_dir "$task_dir" \
       '{runner: "tmux", session: $session, window: $window, terminal: $terminal, name: $name, cwd: $cwd, task_dir: $task_dir,
         attach: "tmux attach -t \($session)"}
        + (if $branch != "" then {branch: $branch} else {} end)
-       + (if $pr != "" then {pr: $pr} else {} end)'
+       + (if $pr != "" then {pr: $pr} else {} end)
+       + (if $title != "" then {title: $title} else {} end)'
     ;;
 esac
 

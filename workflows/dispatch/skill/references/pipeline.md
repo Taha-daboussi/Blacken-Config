@@ -17,7 +17,12 @@ You are the task pane of one dispatch task. You own the task from intake to done
 - **Chunks.** Each step below has a "Reads" line: read those chunks (next to the index) before the step, and each `custom/` file whose "Read before" row in the index matches the work. Read a chunk one time per task; read it again only after you change it.
 - **Missing parts.** A section that is missing or says `none` means: use the default of "Defaults" below. A chunk file that is missing: tell the user one time ("run `dispatch --type init` to add `<chunk>`") and use the defaults.
 - **The state.** At the start of each step, run `dispatch-step <n> <label>`. When you wait for the user, run `dispatch-step <n> <label> --wait "<one line: what you need>"`. It updates the footer and pings the user one time. When the user answers, run `dispatch-step <n> <label>` again.
-- **Sub-agents.** Start each role with the Agent tool and its `subagent_type` (table below). Give it paths, not your own summary: the task folder, the worktree, the range, the index path, and the full paths of the chunks in the "Chunks" column of the table (plus each matching `custom/` file). A sub-agent starts with no BLACKFILE text in its context: it reads only the paths you give it. Each sub-agent writes its report to a file and returns the path. Start parallel sub-agents in one message.
+- **Sub-agents.** Start each role with the Agent tool and its `subagent_type` (table below). Give it paths, not your own summary in the prompt: the task folder, the worktree, the range, the index path, and the full paths of the chunks in the "Chunks" column of the table (plus each matching `custom/` file). A sub-agent starts with no BLACKFILE text in its context: it reads only the paths you give it. Each sub-agent writes its report to a file and returns the path. Start parallel sub-agents in one message.
+- **Handoff.** `handoff.md` in the task folder tells the doers what happened before them, so they need no summary from you and your context does not grow. Start it at step 1 from `~/.claude/skills/dispatch/templates/handoff.md`. After each step, and after each answer of the user, add 1 to 5 short lines from what you already know: each decision and user answer under "Decisions" (word for word when short, with the source), and under "Log" what happened, what failed and its cause, what was tried, and what is still open. No code, no diffs, no copies of other files: point to them by path. Keep it under 80 lines: when it grows past that, merge the old "Log" lines; never drop a "Decisions" line.
+  - Read it: `dispatch-planner`, `dispatch-builder` (each fix round too), `dispatch-e2e-backend`, `dispatch-e2e-ui`. Tell each of them its path.
+  - Read only its "Decisions" part: the final check (`references/review.md` step 5).
+  - Never give it to `dispatch-critic`, `dispatch-spec`, the finders, the disprove and re-review calls, `dispatch-ui-judge`, `dispatch-feedback`, or `dispatch-retro`. They judge the work fresh, without the story of the build.
+- **Resume.** When the task folder already has `steps.tsv` at your start (a crash, a revive, a new pane on the same task), you resume: read `task.md`, `handoff.md`, `steps.tsv`, and `report.md` first, check the worktree (`git status`, `git log origin/<default>..HEAD`), and continue at the last step. Do not start the task again from step 1. When the last step in `steps.tsv` is 10 (done), it is a new run of the same task: start at step 1, and keep the old "Decisions" lines of `handoff.md`.
 - **Notifications.** A `<task-notification>` is the result of your sub-agent. Read it and continue at once. Never answer "No response requested." End your turn only when you wait for a sub-agent that still runs, or for the user.
 - **Questions.** A sub-agent that returns a question: ask the user with `AskUserQuestion` (or a grill round, `references/planning.md`), run `dispatch-step ... --wait`, and give the answer back to the same sub-agent with `SendMessage`.
 - **Heavy checks.** Only you run the gate and the scoped tests, one at a time, with `timeout`. When a command times out, find why. Do not only raise the timeout.
@@ -46,8 +51,8 @@ Pass `model` on the Agent call only to change the default: the UI part of a buil
 
 ## The task folder and the state
 
-- Task folder: `~/.local/share/dispatch/<repo>-<slug>/` (the `dispatch` script makes it and puts the path in your prompt). It holds `task.md`, `plan.md`, `questions.md`, `critic.md`, `expected.md`, `report.md`, `review/`, `shots/before/`, `shots/after/`, `judge/`, `evidence/`.
-- `report.md` is the record of the task: the time log, the step results, the review findings, the e2e results, and the bugs that the user found. The test message and the PR body copy from it.
+- Task folder: `~/.local/share/dispatch/<repo>-<slug>/` (the `dispatch` script makes it and puts the path in your prompt). It holds `task.md`, `handoff.md`, `plan.md`, `questions.md`, `critic.md`, `expected.md`, `report.md`, `review/`, `shots/before/`, `shots/after/`, `judge/`, `evidence/`.
+- `handoff.md` is the short memory of the task for the doers and for a resume ("Handoff" above). `report.md` is the record of the task: the time log, the step results, the review findings, the e2e results, and the bugs that the user found. The test message and the PR body copy from it.
 - Per-repo learn files, next to the index: `misses.md`, `misses/`, `evals/`.
 
 ## Defaults
@@ -79,7 +84,7 @@ When a section is missing or says `none`:
 
 1. Read the index, the task in your prompt, and the issue (the tool of "Issue tracker"). Read its comments too.
 2. Misses of the area: in `misses.md` next to the index (when it exists), read the lines whose area matches the paths that this task touches (`rg -n '<path>' <misses.md>`) and the last 5 lines.
-3. Write `task.md`: the task word for word, the issue key and link, the spec links, the kind (bug or feature), the BLACKFILE.md path, the worktree, the branch, and the misses of the area.
+3. Write `task.md`: the task word for word, the issue key and link, the spec links, the kind (bug or feature, UI or BE, from the task type), the BLACKFILE.md path, the worktree, the branch, and the misses of the area.
 4. Decide the plan step with the size rules of `references/planning.md`, unless the prompt says `--plan` or `--no-plan`. Write the reason in `report.md`.
 
 ## Step 2: Plan and grill (only by the size rules)
@@ -100,7 +105,7 @@ Follow `references/planning.md`. The result is `plan.md` with no open question, 
 
 `dispatch-step 4 build` · Reads: `build.md`, `design.md` (UI part)
 
-Start `dispatch-builder` with the task folder, the worktree, the mode (`bug` or `feature`), and the part.
+Start `dispatch-builder` with the task folder, the worktree, the mode (`bug` or `feature`, from the task type), and the part.
 
 - Kind `backend`: one builder, part `logic` (Opus, the default).
 - Kind `UI`: one builder, part `UI`, with `model: "sonnet"`.
@@ -143,6 +148,7 @@ Follow `references/review.md`. It merges the newest `origin/<default>` first, ru
 
 1. `git fetch origin && git merge origin/<default>`. When the merge brings new commits, run the gate and the scoped tests again, and run a re-review of the merge (`references/review.md`, re-review) when a file of the branch changed on `main`.
 2. Push. Open a draft PR with `gh pr create --draft`. Follow "PR rules" and the repo PR template when it exists. The body has: Summary, Why, the e2e steps and results from `report.md`, the review result, the test result, and what is not tested.
+   Then put the PR number in the pane title: `dispatch-title "#<PR> $DISPATCH_TITLE"`. Skip it when `$DISPATCH_TITLE` already starts with `#`.
 3. Do the "draft PR opens" steps of BLACKFILE.md (issue state, board card link).
    Before the PR body: run `dispatch-pr-overlap` in the worktree. It prints each other open PR whose added lines use a function that this branch changed or added. For each hit, check that PR's use against the change; a screen of the same family goes into the PR body under "Other open PRs" and to the user, and a broken use is a P1 of this task or of that PR (tell the user which). Write "none" when it prints nothing.
 4. CI tests: when BLACKFILE.md "Tests" names a CI trigger, do it (for example post `/test` on the PR), then `gh pr checks <PR> --watch`. A red test check is a P1: read it with `gh run view <id> --log-failed` and send it to `dispatch-builder` as a fix round. After 3 red runs for the same cause: stop and ask the user.
@@ -150,6 +156,8 @@ Follow `references/review.md`. It merges the newest `origin/<default>` first, ru
 ## Step 9: Manual test (UI changes only)
 
 `dispatch-step 9 manual-test --wait "test <issue key>"` · Reads: `test-env.md` ("Where the branch runs")
+
+This call also moves the pane to the "Manual Test" tab of its space, so the user finds every waiting test in one tab. The pane stays there for the rest of the task. When the move fails, tell the user the tab of the pane. In tmux there are no tabs: the pane stays in its window.
 
 A UI change is a change that a user can see: a screen, a message, a button, a text, a layout, a flow. Skip this step for a backend change with a green backend e2e, a clean review, and green tests. Also skip it when the user said "no manual test" for this task.
 

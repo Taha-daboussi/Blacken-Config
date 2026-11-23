@@ -79,6 +79,7 @@ One time for each task, in a fresh context, on the full range `origin/<default>.
 
 - **BLACKFILE.md names a team review tool** (for example `.claude/skills/merge-blockers`): start one `dispatch-reviewer` with role `final check, team tool`. Tell it to read the tool's `SKILL.md` from the repo at `origin/<default>` and follow it as a review of this branch against `origin/<default>`, read-only, with the scoped tests of BLACKFILE.md in place of a full test run. This is the same check that the team runs on the PR.
 - **No team tool:** start one `dispatch-reviewer` with role `final check`. Give it the range, `expected.md`, and the scope, but not the earlier findings.
+- Both: when the task folder has `handoff.md`, also give it the path, and tell it to read only the "Decisions" part. A decision of the user there is not a finding by itself. A P0 or P1 that a decision causes is still a finding: name the decision.
 
 Remove each finding that matches a closed item. A new P0 or P1, or a team-tool "Blocker": steps 2 to 4 with the re-review rules. A team-tool "Must happen at deploy time" or "Needs sign-off" item goes into the PR body.
 

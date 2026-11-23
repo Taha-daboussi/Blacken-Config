@@ -12,7 +12,7 @@ hooks:
           command: "dispatch-guard-expected"
 ---
 
-You build one task in the worktree that the pane names. Read, in this order: `task.md`, `plan.md` (when it exists) and `expected.md` in the task folder; `~/.claude/skills/dispatch/references/coding-principles.md`; the BLACKFILE chunks that the pane gives you (`build.md`; also `design.md` for the UI part) and each `custom/` file it names; for UI work, `~/.claude/skills/dispatch/references/ui-rules.md`.
+You build one task in the worktree that the pane names. Read, in this order: `task.md`, `handoff.md` and `plan.md` (when they exist) and `expected.md` in the task folder; `~/.claude/skills/dispatch/references/coding-principles.md`; the BLACKFILE chunks that the pane gives you (`build.md`; also `design.md` for the UI part) and each `custom/` file it names; for UI work, `~/.claude/skills/dispatch/references/ui-rules.md`.
 
 - `expected.md` is the target. You cannot edit it (a hook blocks it). When the code and `expected.md` disagree, and you think `expected.md` is wrong, stop and return the line, the reason, and the source that says so.
 - Mode `bug`: fix the cause at the place that all callers share, and look for the same class of bug in the rest of the diff. Mode `feature`: build only what `expected.md` and the plan ask for.

@@ -23,7 +23,10 @@ When a person finds a problem after a step said "done" (a review comment, a UI n
 - `skills/`: `grilling`, `domain-modeling`, `grill-with-docs`, vendored from [mattpocock/skills](https://github.com/mattpocock/skills) (MIT, commit `abeeaf9`)
 - `bin/` goes to `~/.local/bin` (symlinks)
   - `dispatch`: makes the worktree and the task folder, picks or makes the tab, and starts `claude` with the prompt
-  - `dispatch-step`: records the step of a pane (footer, herdr label or tmux window option, step log, ping on wait)
+  - `dispatch-step`: records the step of a pane (footer, herdr label or tmux window option, step log, ping on wait); in herdr, at step 9 `manual-test` it moves the pane to the Manual Test tab
+  - `dispatch-pick-tab`: picks the tab with room for the next pane of a type (`UI Bugs`, `UI Bugs 2`, ...)
+  - `dispatch-title`: sets the pane title of the calling task pane (step 8 adds the PR number)
+  - `dispatch-move-tab`: moves the calling herdr pane to another tab of its space; the program keeps running
   - `dispatch-ui-diff`: compares the expected screen with the DOM text of a shot, plus a pixel diff
   - `dispatch-pr-overlap`: lists the other open PRs whose added lines use a function that this branch changed (step 8, no model)
   - `dispatch-eval`: prepares, runs (step `check`) and records the eval cases of the learn loop, also against a draft (`--skill`, `--agents`, `--config`) and across all repos (`--all-repos`)
@@ -60,7 +63,7 @@ The skill also uses these tools when they are there: `linear-api` (Linear), `cla
 In a herdr session, give the task to Claude, or type `/dispatch <task>`. Outside herdr, type `/dispatch <task>`; the pane opens in the tmux session `dispatch` (`tmux attach -t dispatch`). The dispatcher runs, for example:
 
 ```sh
-dispatch --type bug --name abc-123 --branch fix/abc-123-slippage --prompt-file prompt.md
+dispatch --type be-bug --name abc-123 --branch fix/abc-123-slippage --prompt-file prompt.md
 dispatch --type feedback --name pr-62 --pr 62 --prompt-file prompt.md
 ```
 
