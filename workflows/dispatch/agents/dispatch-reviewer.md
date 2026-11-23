@@ -1,6 +1,6 @@
 ---
 name: dispatch-reviewer
-description: Read-only review role of the dispatch pipeline. Runs as a finder with one focus (A correctness, B security, C rules, D state and lifecycle), as a disprove check, as a re-review, as the main-changes list (review step 0.4), or as the final check, as the pane says. Use only from a dispatch task pane, step 6, or from a dispatch eval.
+description: Read-only review role of the dispatch pipeline. Runs as a finder with one focus (A correctness, B security, C rules, D state and lifecycle), as a disprove check, as a re-review, as the main-changes list (review step 0.4), or as the final check, as the pane says. Use only from a dispatch task pane (step 6, and the newest-main check of steps 8 and 10), or from a dispatch eval.
 tools: Read, Grep, Glob, Bash, Skill, Write
 model: opus
 effort: high

@@ -26,10 +26,13 @@ The pane runs the review rounds of `~/.claude/REVIEW.md` with `dispatch-reviewer
 
 Reason: about one boss finding in five came from code on `main` that the branch did not have yet.
 
-1. `git fetch origin && git merge origin/<default>`. Merge, never rebase, because the branch is pushed. Fix each conflict on the branch.
-2. Run the gate and the scoped tests of BLACKFILE.md. A red result goes to `dispatch-builder` as a fix round.
-3. Push. Range: `origin/<default>...HEAD`. Note the head SHA.
-4. List what `main` changed since the branch point (`git diff <merge-base> origin/<default>`) in the files and packages that the branch changes or calls: each changed or new function, and each new check that `main` added to a function (a minimum, a limit, a role check, a state check). For each one, name the branch code that calls it, and the branch code that is a second path for the same action and does not call it (an Edit, Retry, Resume or Import next to a Create or Buy that `main` changed). Write the list to `review/main-changes.md`. Finder A reads it. A list of only the called functions is often empty and misses the second paths. The pane does not read the diff for this: start one `dispatch-reviewer` with role `main changes` and `model: "sonnet"`, with the merge base, `origin/<default>`, and the files that the branch changes; it writes the list.
+This is the only merge rule of the task. Steps 8.1 and 10.1 of `references/pipeline.md` run it too; there, the list of item 4 goes to `review/main-changes-<step>.md`, and item 5 runs.
+
+1. `git fetch origin`. Note the base before the merge: `base=$(git merge-base HEAD origin/<default>)`. When `git rev-list --count HEAD..origin/<default>` prints 0, `main` has nothing new: write an empty list (item 4) and go on with the next step of the caller.
+2. `git merge origin/<default>`. Merge, never rebase, because the branch is pushed. Fix each conflict on the branch.
+3. Run the gate and the scoped tests of BLACKFILE.md. A red result goes to `dispatch-builder` as a fix round ("Fix rounds" in `references/pipeline.md`). Push. Range: `origin/<default>...HEAD`. Note the head SHA.
+4. List what `main` changed since the base (`git diff <base> origin/<default>`) in the files and packages that the branch changes or calls: each changed or new function, and each new check that `main` added to a function (a minimum, a limit, a role check, a state check). For each one, name the branch code that calls it, and the branch code that is a second path for the same action and does not call it (an Edit, Retry, Resume or Import next to a Create or Buy that `main` changed). Write the list to `review/main-changes.md`. Finder A reads it. A list of only the called functions is often empty and misses the second paths. The pane does not read the diff for this: start one `dispatch-reviewer` with role `main changes` and `model: "sonnet"`, with the base, `origin/<default>`, and the files that the branch changes; it writes the list.
+5. Only in steps 8.1 and 10.1 (in step 6 all finders run next): when the list is not empty, or item 2 had conflicts, start one `dispatch-reviewer`, role `finder A`, on the range `origin/<default>...HEAD` with the list and the SHA of the merge commit (it checks the conflict fixes too). A P0 or P1: steps 2 to 4 below.
 
 ## Step 1: Find
 

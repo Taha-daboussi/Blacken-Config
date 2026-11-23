@@ -25,6 +25,8 @@ You are the task pane of one dispatch task. You own the task from intake to done
 - **Resume.** When the task folder already has `steps.tsv` at your start (a crash, a revive, a new pane on the same task), you resume: read `task.md`, `handoff.md`, `steps.tsv`, and `report.md` first, check the worktree (`git status`, `git log origin/<default>..HEAD`), and continue at the last step. Do not start the task again from step 1. When the last step in `steps.tsv` is 10 (done), it is a new run of the same task: start at step 1, and keep the old "Decisions" lines of `handoff.md`.
 - **Notifications.** A `<task-notification>` is the result of your sub-agent. Read it and continue at once. Never answer "No response requested." End your turn only when you wait for a sub-agent that still runs, or for the user.
 - **Questions.** A sub-agent that returns a question: ask the user with `AskUserQuestion` (or a grill round, `references/planning.md`), run `dispatch-step ... --wait`, and give the answer back to the same sub-agent with `SendMessage`.
+- **Fix rounds.** Each loop that sends a failure to `dispatch-builder` (a red gate or test, a red check after a merge, a red CI check, an e2e fail) stops after 3 fix rounds for the same failure: run `dispatch-step <n> <label> --wait "<the failure in one line>"` and wait for the user. The review loop has its own limit (`references/review.md` step 4), and the UI and logic split has 2 rounds (step 4).
+- **Newest main.** Merge `origin/<default>` only with step 0 of `references/review.md`: in step 6, step 8.1 and step 10.1. No other step merges `main`, and step 9 never does.
 - **Heavy checks.** Only you run the gate and the scoped tests, one at a time, with `timeout`. When a command times out, find why. Do not only raise the timeout.
 - **P0 and P1 are always fixed** in this task. An agent cannot accept the risk. When you cannot fix one, stop and ask the user.
 - **Root cause.** Never mute an error, skip a check, or weaken a test to get green.
@@ -120,7 +122,7 @@ Each builder commits on the branch. A question from it: ask the user, then send 
 1. Run `/simplify` one time on the files that the branch changed (`git diff --name-only origin/<default>...HEAD`). Follow section 8 of `references/coding-principles.md` for what to decline.
 2. Run the anti-slop lint when BLACKFILE.md names it, on the changed files only.
 3. Run the "Gate" command. Then the scoped tests of "Tests". Each one that says `none` is skipped (Defaults).
-4. A red gate or a red test: send it to `dispatch-builder` as a fix round. Then run the gate and the tests again. After 3 fix rounds for the same failure: stop, `dispatch-step 5 simplify --wait "<the failure in one line>"`.
+4. A red gate or a red test: send it to `dispatch-builder` as a fix round ("Fix rounds"). Then run the gate and the tests again.
 5. Commit the simplify edits. Push the branch (`git push -u origin <branch>`), and check that `git rev-parse origin/<branch>` equals `HEAD`.
 
 ## Step 6: Review
@@ -140,18 +142,18 @@ Follow `references/review.md`. It merges the newest `origin/<default>` first, ru
 **A fail:** write it in the "Bugs found in E2E" list of `report.md` with the round, the step, what broke, and the cause (`code`, `expected`, `env`).
 - Cause `code`: send the fail to `dispatch-builder` as a fix round (a UI step fail: `model: "sonnet"`; a backend check fail: the default). Then run the gate, a re-review of the fix commits (`references/review.md`, re-review), and the failed e2e part again.
 - Cause `expected`: the expected text is wrong. Check its source. Correct it with `dispatch-spec`, and record a miss for the retro (`references/retro.md`, "Automatic triggers").
-- Cause `env`, or the third fail of the same step: stop. Run `dispatch-step 7 e2e --wait "<the fail in one line>"`, keep the env, and wait for the user.
+- Cause `env`, or the third fail of the same step ("Fix rounds"): stop. Run `dispatch-step 7 e2e --wait "<the fail in one line>"`, keep the env, and wait for the user.
 
 ## Step 8: PR
 
 `dispatch-step 8 pr` · Reads: `ship.md` ("PR rules"), `issues.md`, `build.md` ("Tests")
 
-1. `git fetch origin && git merge origin/<default>`. When the merge brings new commits, run the gate and the scoped tests again, and run a re-review of the merge (`references/review.md`, re-review) when a file of the branch changed on `main`.
+1. Newest main: step 0 of `references/review.md`, with items 4 and 5 for the new `main` commits since step 6.
 2. Push. Open a draft PR with `gh pr create --draft`. Follow "PR rules" and the repo PR template when it exists. The body has: Summary, Why, the e2e steps and results from `report.md`, the review result, the test result, and what is not tested.
    Then put the PR number in the pane title: `dispatch-title "#<PR> $DISPATCH_TITLE"`. Skip it when `$DISPATCH_TITLE` already starts with `#`.
 3. Do the "draft PR opens" steps of BLACKFILE.md (issue state, board card link).
    Before the PR body: run `dispatch-pr-overlap` in the worktree. It prints each other open PR whose added lines use a function that this branch changed or added. For each hit, check that PR's use against the change; a screen of the same family goes into the PR body under "Other open PRs" and to the user, and a broken use is a P1 of this task or of that PR (tell the user which). Write "none" when it prints nothing.
-4. CI tests: when BLACKFILE.md "Tests" names a CI trigger, do it (for example post `/test` on the PR), then `gh pr checks <PR> --watch`. A red test check is a P1: read it with `gh run view <id> --log-failed` and send it to `dispatch-builder` as a fix round. After 3 red runs for the same cause: stop and ask the user.
+4. CI tests: when BLACKFILE.md "Tests" names a CI trigger, do it (for example post `/test` on the PR), then `gh pr checks <PR> --watch`. A red test check is a P1: read it with `gh run view <id> --log-failed` and send it to `dispatch-builder` as a fix round ("Fix rounds").
 
 ## Step 9: Manual test (UI changes only)
 
@@ -171,7 +173,7 @@ A UI change is a change that a user can see: a screen, a message, a button, a te
 
 `dispatch-step 10 done` · Reads: `ship.md`, `issues.md`, `build.md`
 
-1. Newest main before ready (`main` can add a check while the PR waits for the manual test). Do this one time. `git fetch origin`. When `origin/<default>` has commits that the branch does not have: merge it, run the gate and the scoped tests, push, and do step 0.4 of `references/review.md` for the new main commits only. When that list is not empty, start one `dispatch-reviewer`, role `finder A`, on the range `origin/<default>...HEAD` with the list. A P0 or P1: steps 2 to 4 of `references/review.md`. For a UI change, when the merge or a fix changes a file that draws a screen the user tested, send a new short test message with only those screens (step 9) and wait for a new OK; else go on with no new test.
+1. Newest main before ready (`main` can add a check while the PR waits for the manual test). Do this one time: step 0 of `references/review.md`, with items 4 and 5 for the new `main` commits since step 8. For a UI change, when the merge or a fix changes a file that draws a screen the user tested, send a new short test message with only those screens (step 9) and wait for a new OK; else go on with no new test.
 2. `gh pr ready <PR>` (skip it when the PR is not a draft). Do the ready steps of BLACKFILE.md (for example a shared preview branch).
 3. `gh pr checks <PR> --watch`. Wait for the test check of BLACKFILE.md. When it shows `skipping`, no test ran: run the command again. A red check is a P1 (step 8.4).
 4. Merge when BLACKFILE.md "Merge" says so.
