@@ -69,7 +69,11 @@
     "ctrl-left": "pane.go:left",
     "ctrl-right": "pane.go:right",
     "ctrl-up": "pane.go:up",
-    "ctrl-down": "pane.go:down"
+    "ctrl-down": "pane.go:down",
+    "ctrl-shift-left": "pane.go:left",
+    "ctrl-shift-right": "pane.go:right",
+    "ctrl-shift-up": "pane.go:up",
+    "ctrl-shift-down": "pane.go:down"
   },
   "terminal": {
     "ctrl-backspace": "send:\u0017",
@@ -83,7 +87,11 @@
     "shift-insert": "terminal.paste",
     "ctrl-b": "mod.open:tmux-prefix",
     "ctrl-up": "pane.go:up",
-    "ctrl-down": "pane.go:down"
+    "ctrl-down": "pane.go:down",
+    "ctrl-shift-left": "pane.go:left",
+    "ctrl-shift-right": "pane.go:right",
+    "ctrl-shift-up": "pane.go:up",
+    "ctrl-shift-down": "pane.go:down"
   },
   "mod:tmux-prefix": {
     "ctrl-b": "tmux-prefix.send-prefix"
