@@ -24,7 +24,7 @@ def main_checkout():
 
 
 def project_dir(cwd):
-    return os.path.join(os.path.expanduser("~/.claude/projects"), re.sub(r"[^A-Za-z0-9]", "-", cwd))
+    return os.path.join(os.path.join(os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude"), "projects"), re.sub(r"[^A-Za-z0-9]", "-", cwd))
 
 
 def read_steps(path):
