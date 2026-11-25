@@ -1,6 +1,6 @@
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { spaces, agents, terminals, focused, theme, shared, setShared, readTextFile, home, hc, run, notify, openOverlay, closeOverlay, props, checking } from "herdr";
+import { spaces, agents, terminals, focused, theme, shared, setShared, readTextFile, home, hc, run, notify, openOverlay, closeOverlay, props, checking, exec } from "herdr";
 
 const WORKSPACES = [
   { id: "dwn", label: "Dawn", match: /dawn/i },
@@ -99,6 +99,10 @@ async function dispatchIssue(issue) {
   const space = spaces().find((s) => s.id === sel?.space) ?? spaces().find((s) => s.active);
   if (!space) {
     notify({ title: "Linear", body: "No Herdr space is open.", level: "warning" });
+    return;
+  }
+  if (space.folder && (await exec("test", ["-d", space.folder], { on: space.machine }).catch(() => null))?.code !== 0) {
+    notify({ title: "Linear", body: `The ${space.name} space folder does not exist: ${space.folder}`, level: "error" });
     return;
   }
   const task = `dispatch this task please: ${issue.url} ${issue.title}`;
