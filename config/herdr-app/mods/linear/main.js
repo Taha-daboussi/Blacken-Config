@@ -108,9 +108,10 @@ async function dispatchIssue(issue) {
     return;
   }
   const task = `dispatch this task please: ${issue.url} ${issue.title}`;
+  const agent = space.machine ? "claudet" : "claude";
   const main = space.tabs.find((t) => t.name === "Main");
   if (!main) {
-    run("tab.new", { name: "Main", space: space.id, folder: space.folder, argv: ["claude"], task, focus: false });
+    run("tab.new", { name: "Main", space: space.id, folder: space.folder, argv: [agent], task, focus: false });
     notify({ title: "Linear", body: `Started a new Main tab in ${space.name} for ${issue.identifier}.`, level: "success" });
     return;
   }
@@ -118,7 +119,7 @@ async function dispatchIssue(issue) {
   const args = ["run", "--bg", "--keep", "--no-parent", "--label", `herdr.space=${local(space.id)}`, "--label", `herdr.tab=${local(main.id)}`];
   if (space.machine) args.push("--on", space.machine);
   if (space.folder) args.push("--cwd", space.folder);
-  args.push("--", "claude", task);
+  args.push("--", agent, task);
   const r = await hc(args);
   if (r.code === 0) notify({ title: "Linear", body: `Started a new pane in ${space.name} / Main for ${issue.identifier}.`, level: "success" });
   else notify({ title: "Linear", body: `Could not start a pane for ${issue.identifier}: ${(r.stderr || r.stdout).trim()}`, level: "error" });
