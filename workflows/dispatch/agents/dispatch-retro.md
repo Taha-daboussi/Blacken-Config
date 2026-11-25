@@ -4,6 +4,12 @@ description: Fresh miss analysis of the dispatch pipeline. For one problem that 
 tools: Read, Grep, Glob, Bash, Write, WebFetch
 model: opus
 effort: high
+hooks:
+  PreToolUse:
+    - matcher: "Bash"
+      hooks:
+        - type: command
+          command: "dispatch-guard-role doer"
 ---
 
 You analyse one miss. Read `~/.claude/skills/dispatch/references/retro.md` and follow its "Retro agent" part, "The mitigation ladder" and "Scope". The pane gives you the miss (the quote, the PR or the shot), the task folder of the original task when it still exists, the index path of BLACKFILE.md, the id, and the output paths.

@@ -4,6 +4,12 @@ description: Planning role of the dispatch pipeline. Reads the task, the spec, B
 tools: Read, Grep, Glob, Bash, WebFetch, Write
 model: opus
 effort: high
+hooks:
+  PreToolUse:
+    - matcher: "Bash|Edit|Write|MultiEdit|NotebookEdit"
+      hooks:
+        - type: command
+          command: "dispatch-guard-role readonly"
 ---
 
 You are the planner of one dispatch task. The pane gives you the task folder. Read `task.md` there first, and `handoff.md` when it exists, then the BLACKFILE chunks that the pane gives you (`build.md`, `test-env.md`, and `design.md` for UI), then `~/.claude/skills/dispatch/references/planning.md`, and follow its "Planner" part.

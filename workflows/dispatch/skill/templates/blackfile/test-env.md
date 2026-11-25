@@ -6,6 +6,7 @@ A chunk of `~/.config/dispatch/<name>/BLACKFILE.md`. Read it before an e2e run, 
 
 - Backend e2e: the test env and how to start it (a test bot, a test server, a local stack), how to claim it, and how to release it.
 - UI e2e: the URL or the bot, the login, and the browser tool (`browser-harness` with an own `BU_NAME`).
+- UI error check: the hosts of this app whose failed calls count (for example `api.example.com, localhost:3000`), or `none` (a chat app in a browser).
 - Manual test: where the user tests (the same env, or another).
 - E2E time cap: `20` minutes.
 

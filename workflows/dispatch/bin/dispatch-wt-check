@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat >&2 <<'U'
+dispatch-wt-check save|verify: prove that a read-only sub-agent did not change the task worktree.
+
+  dispatch-wt-check save      before you start a sub-agent that is not dispatch-builder
+  dispatch-wt-check verify    after it returns: exit 0 when the worktree is the same, exit 1 with what changed
+
+Run it in the task worktree. It compares HEAD, the branch, and the tracked changes (staged and not staged).
+The snapshot is in $DISPATCH_TASK_DIR/.wt-snapshot (or in the git folder when DISPATCH_TASK_DIR is unset).
+U
+  exit 2
+}
+die() { echo "dispatch-wt-check: $*" >&2; exit 1; }
+
+git rev-parse --git-dir >/dev/null 2>&1 || die "not in a git worktree"
+snap=${DISPATCH_TASK_DIR:-$(git rev-parse --absolute-git-dir)}/.wt-snapshot
+
+state() {
+  printf 'head %s\nbranch %s\n' "$(git rev-parse HEAD)" "$(git branch --show-current)"
+  printf 'diff %s\n' "$(git diff HEAD --binary | sha256sum | cut -d' ' -f1)"
+  git status --porcelain=v1 --untracked-files=no | sed 's/^/status /'
+}
+
+case ${1:-} in
+  save)
+    state >"$snap"
+    echo "dispatch-wt-check: saved $(sed -n 's/^head //p' "$snap" | cut -c1-12)"
+    ;;
+  verify)
+    [[ -r $snap ]] || die "no snapshot $snap; run save first"
+    if now=$(state) && [[ $now == "$(<"$snap")" ]]; then
+      echo "dispatch-wt-check: the worktree did not change"
+      exit 0
+    fi
+    echo "dispatch-wt-check: the worktree changed while a read-only sub-agent ran:" >&2
+    if changes=$(diff "$snap" <(echo "$now")); then :; fi
+    sed -n 's/^</  before:/p; s/^>/  after: /p' <<<"$changes" >&2
+    exit 1
+    ;;
+  *) usage ;;
+esac

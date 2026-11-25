@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat >&2 <<'U'
+dispatch-rule-scan: check the diff of this branch against the "Rule scan" lines of the BLACKFILE chunk build.md.
+No model decides anything: each hit is a rule break that the builder fixes (references/pipeline.md, step 5).
+
+  dispatch-rule-scan [--base <ref>] [--rules <build.md>]
+
+Run it in the task worktree. Default base: origin/<default>. Default rules: build.md next to the BLACKFILE of this
+repo (dispatch-context --path). Rule lines in the section "## Rule scan", one rule on each line:
+
+  - <name>: added `<ERE>` [in `<path ERE>`] [except `<ERE>`]   an added line matches (and is not an exception)
+  - <name>: file `<path ERE>`                                  the branch changes (adds, edits, deletes) such a file
+
+ERE is POSIX extended regex (grep -E): use [[:space:]], not \s. Prints "<file>:<line>: <name>: <text>" for each hit.
+Exit 0: no hit, or the section is missing or says none. Exit 1: hits. Exit 2: a bad rule line or a bad argument.
+U
+  exit 2
+}
+die() { echo "dispatch-rule-scan: $*" >&2; exit 2; }
+
+base= rules=
+while (($#)); do
+  case $1 in
+    --base) (($# >= 2)) || usage; base=$2; shift 2 ;;
+    --rules) (($# >= 2)) || usage; rules=$2; shift 2 ;;
+    -h|--help) usage ;;
+    *) usage ;;
+  esac
+done
+
+git rev-parse --git-dir >/dev/null 2>&1 || die "not in a git repo"
+if [[ -z $base ]]; then
+  base=$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null) || die "no origin/HEAD; pass --base"
+fi
+if [[ -z $rules ]]; then
+  bf=$(dispatch-context --path) || die "this repo has no BLACKFILE; pass --rules"
+  rules=$(dirname "$bf")/build.md
+fi
+[[ -r $rules ]] || die "no rules file $rules"
+
+lines=$(awk '/^## /{on = ($0 ~ /^## Rule scan[[:space:]]*$/); next} on && /^- /' "$rules")
+if [[ -z $lines || $lines =~ ^-[[:space:]]+none[[:space:]]*$ ]]; then
+  echo "dispatch-rule-scan: no \"Rule scan\" rules in $rules; nothing to check" >&2
+  exit 0
+fi
+
+diff=$(git diff -U0 --no-color "$base...HEAD") || die "git diff $base...HEAD failed"
+files=$(git diff --name-only "$base...HEAD") || die "git diff --name-only $base...HEAD failed"
+added=$(awk '
+  /^\+\+\+ / { file = ($2 == "/dev/null") ? "" : substr($2, 3); next }
+  /^@@ / { split($3, a, ","); line = substr(a[1], 2) + 0; next }
+  /^\+/ { if (file != "") printf "%s\t%d\t%s\n", file, line, substr($0, 2); line++ }' <<<"$diff")
+
+bt='`'
+hits=0
+while IFS= read -r rule; do
+  [[ $rule =~ ^-[[:space:]]+([^:]+):[[:space:]]+(added|file)[[:space:]]+$bt([^$bt]+)$bt(.*)$ ]] || die "bad rule line: $rule"
+  name=${BASH_REMATCH[1]} kind=${BASH_REMATCH[2]} re=${BASH_REMATCH[3]} rest=${BASH_REMATCH[4]}
+  in= except=
+  [[ $rest =~ [[:space:]]in[[:space:]]+$bt([^$bt]+)$bt ]] && in=${BASH_REMATCH[1]}
+  [[ $rest =~ [[:space:]]except[[:space:]]+$bt([^$bt]+)$bt ]] && except=${BASH_REMATCH[1]}
+  for r in "$re" "$in" "$except"; do
+    [[ -z $r ]] && continue
+    rc=0; grep -Eq -- "$r" </dev/null || rc=$?
+    ((rc <= 1)) || die "bad regex in rule \"$name\": $r"
+  done
+  if [[ $kind == file ]]; then
+    out=$(RE=$re awk -v name="$name" '{ if ($0 ~ ENVIRON["RE"]) printf "%s:0: %s: changed file\n", $0, name }' <<<"$files")
+  else
+    out=$(RE=$re IN=$in EX=$except awk -F'\t' -v name="$name" '
+      { text = $0; sub(/^[^\t]*\t[^\t]*\t/, "", text) }
+      ENVIRON["IN"] != "" && $1 !~ ENVIRON["IN"] { next }
+      text !~ ENVIRON["RE"] { next }
+      ENVIRON["EX"] != "" && text ~ ENVIRON["EX"] { next }
+      { printf "%s:%s: %s: %s\n", $1, $2, name, substr(text, 1, 160) }' <<<"$added")
+  fi
+  if [[ -n $out ]]; then
+    echo "$out"
+    hits=$((hits + $(wc -l <<<"$out")))
+  fi
+done <<<"$lines"
+
+if ((hits)); then
+  echo "dispatch-rule-scan: $hits hit(s) against $base" >&2
+  exit 1
+fi
+echo "dispatch-rule-scan: no hit against $base" >&2

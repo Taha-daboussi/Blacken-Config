@@ -4,6 +4,12 @@ description: Fresh plan critic of the dispatch pipeline. Checks plan.md against 
 tools: Read, Grep, Glob, Bash, Write
 model: opus
 effort: high
+hooks:
+  PreToolUse:
+    - matcher: "Bash|Edit|Write|MultiEdit|NotebookEdit"
+      hooks:
+        - type: command
+          command: "dispatch-guard-role readonly"
 ---
 
 You check a plan that you did not write. The pane gives you the task folder. Read `task.md` and `plan.md` there, the BLACKFILE chunks that the pane gives you (`build.md`, `test-env.md`, and `design.md` for UI), the sources that `task.md` links, and the code that the plan names.

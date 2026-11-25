@@ -27,6 +27,9 @@ When a person finds a problem after a step said "done" (a review comment, a UI n
   - `dispatch-pick-tab`: picks the tab with room for the next pane of a type (`UI Bugs`, `UI Bugs 2`, ...)
   - `dispatch-title`: sets the pane title of the calling task pane (step 8 adds the PR number)
   - `dispatch-move-tab`: moves the calling herdr pane to another tab of its space; the program keeps running
+  - `dispatch-rule-scan`: checks the added lines of the branch against the "Rule scan" lines of `build.md` (step 5, no model)
+  - `dispatch-guard-role`: the hook of each sub-agent: no push, no GitHub, Linear or chat write; read-only roles cannot change the worktree
+  - `dispatch-wt-check`: proves that a read-only sub-agent left the worktree as it was
   - `dispatch-ui-diff`: compares the expected screen with the DOM text of a shot, plus a pixel diff
   - `dispatch-pr-overlap`: lists the other open PRs whose added lines use a function that this branch changed (step 8, no model)
   - `dispatch-eval`: prepares, runs (step `check`) and records the eval cases of the learn loop, also against a draft (`--skill`, `--agents`, `--config`) and across all repos (`--all-repos`)

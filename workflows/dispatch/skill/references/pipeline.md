@@ -18,6 +18,7 @@ You are the task pane of one dispatch task. You own the task from intake to done
 - **Missing parts.** A section that is missing or says `none` means: use the default of "Defaults" below. A chunk file that is missing: tell the user one time ("run `dispatch --type init` to add `<chunk>`") and use the defaults.
 - **The state.** At the start of each step, run `dispatch-step <n> <label>`. When you wait for the user, run `dispatch-step <n> <label> --wait "<one line: what you need>"`. It updates the footer and pings the user one time. When the user answers, run `dispatch-step <n> <label>` again.
 - **Sub-agents.** Start each role with the Agent tool and its `subagent_type` (table below). Give it paths, not your own summary in the prompt: the task folder, the worktree, the range, the index path, and the full paths of the chunks in the "Chunks" column of the table (plus each matching `custom/` file). A sub-agent starts with no BLACKFILE text in its context: it reads only the paths you give it. Each sub-agent writes its report to a file and returns the path. Start parallel sub-agents in one message.
+- **Only you act outside, and only the builder changes the worktree.** A hook in each agent file (`dispatch-guard-role`) blocks every sub-agent from a push, a GitHub or Linear write, and a chat post; it also blocks each read-only role (every role except `dispatch-builder` and `dispatch-retro`) from an edit or a git change in the worktree. As a second check, run `dispatch-wt-check save` in the worktree before you start a read-only role (one time for a group that starts in one message), and `dispatch-wt-check verify` when it returns. A change: do not use its result, and stop with `dispatch-step <n> <label> --wait "a read-only sub-agent changed the worktree"`; the script prints what changed. Never undo the change yourself.
 - **Handoff.** `handoff.md` in the task folder tells the doers what happened before them, so they need no summary from you and your context does not grow. Start it at step 1 from `~/.claude/skills/dispatch/templates/handoff.md`. After each step, and after each answer of the user, add 1 to 5 short lines from what you already know: each decision and user answer under "Decisions" (word for word when short, with the source), and under "Log" what happened, what failed and its cause, what was tried, and what is still open. No code, no diffs, no copies of other files: point to them by path. Keep it under 80 lines: when it grows past that, merge the old "Log" lines; never drop a "Decisions" line.
   - Read it: `dispatch-planner`, `dispatch-builder` (each fix round too), `dispatch-e2e-backend`, `dispatch-e2e-ui`. Tell each of them its path.
   - Read only its "Decisions" part: the final check (`references/review.md` step 5).
@@ -42,7 +43,7 @@ You are the task pane of one dispatch task. You own the task from intake to done
 | 4, fixes | `dispatch-builder` | opus (logic part), sonnet (UI part, pass `model: "sonnet"`) | `build.md`, `design.md` (UI part) | commits |
 | 6 | `dispatch-reviewer` | opus (finders, final check), sonnet (disprove, re-review) | `review.md`, `build.md` | `review/*.md` |
 | 7 | `dispatch-e2e-backend` | sonnet | `test-env.md` | `e2e-backend.md`, `evidence/` |
-| 7 | `dispatch-e2e-ui` | sonnet | `test-env.md` | `shots/<side>/` |
+| 7 | `dispatch-e2e-ui` | sonnet | `test-env.md`, `design.md` | `shots/<side>/` |
 | 7 | `dispatch-ui-judge` | sonnet | none (paths of the step only) | `judge/*.json` |
 | learn | `dispatch-feedback` | sonnet | none | `feedback.md` |
 | learn | `dispatch-retro` | opus | the chunk of the step that missed | `misses/<id>.md`, `evals/<id>.md` |
@@ -67,11 +68,14 @@ When a section is missing or says `none`:
 | Issue tracker (`issues.md`) | no tracker: the task key is the slug; skip each issue state and comment step |
 | Boards (`issues.md`) | skip each board step |
 | Gate (`build.md`) | no gate: write "no gate" in `report.md`; the review and the e2e still run |
+| Rule scan (`build.md`) | no rule scan: write "no rule scan" in `report.md` |
 | Tests (`build.md`) | no scoped tests and no CI trigger: write "no tests" in `report.md` and in the PR body |
 | File rules (`build.md`) | test edits and Markdown edits: ask first |
 | Models (`build.md`) | the defaults of the table above |
 | Where the branch runs (`test-env.md`) | no env for a kind: "e2e not run: no env" for that kind (step 7) |
 | Money path (`test-env.md`) | a sub-agent runs no step that signs or pays and marks it NOT RUN; the pane asks the user before any such step |
+| Screen variants (`design.md`) | a web app: desktop 1440x900 and phone 390x844, no themes; a chat app or a CLI: none |
+| UI error check (`test-env.md`) | the host of the UI e2e URL; a chat app in a browser: no error check |
 | Design sources (`design.md`) | ask the user each design question; never decide a design |
 | Team review tool (`review.md`) | the Opus final check; review policy: fix each valid finding, P0 to P3 |
 | Review rules, Hot spots (`review.md`) | finder C checks only the repo rules; finder D only its own list |
@@ -117,12 +121,12 @@ Each builder commits on the branch. A question from it: ask the user, then send 
 
 ## Step 5: Simplify, gate, tests
 
-`dispatch-step 5 simplify` · Reads: `build.md` ("Gate", "Tests")
+`dispatch-step 5 simplify` · Reads: `build.md` ("Gate", "Rule scan", "Tests")
 
 1. Run `/simplify` one time on the files that the branch changed (`git diff --name-only origin/<default>...HEAD`). Follow section 8 of `references/coding-principles.md` for what to decline.
 2. Run the anti-slop lint when BLACKFILE.md names it, on the changed files only.
-3. Run the "Gate" command. Then the scoped tests of "Tests". Each one that says `none` is skipped (Defaults).
-4. A red gate or a red test: send it to `dispatch-builder` as a fix round ("Fix rounds"). Then run the gate and the tests again.
+3. Run the "Gate" command. Then `dispatch-rule-scan` (the "Rule scan" lines of `build.md`, on the diff of the branch). Then the scoped tests of "Tests". Each one that says `none` is skipped (Defaults).
+4. A red gate, a rule-scan hit, or a red test: send it to `dispatch-builder` as a fix round ("Fix rounds"). Then run the gate and the tests again.
 5. Commit the simplify edits. Push the branch (`git push -u origin <branch>`), and check that `git rev-parse origin/<branch>` equals `HEAD`.
 
 ## Step 6: Review

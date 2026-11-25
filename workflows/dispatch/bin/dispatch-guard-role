@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat >&2 <<'U'
+dispatch-guard-role <doer|readonly>: PreToolUse hook of the dispatch sub-agents (agents/*.md frontmatter).
+
+Every role: block each action that leaves this machine. The pane does those itself.
+  git push; gh writes (pr, issue, release, workflow, run, label, secret, variable, repo; gh api writes);
+  linear-api writes; claude-tg; posts to Telegram, Slack or Discord.
+readonly: also block each change of the task worktree ($DISPATCH_WORKTREE, set by dispatch; else the session folder):
+  Edit and Write inside it, and git commands that change it.
+U
+  exit 2
+}
+
+block() { echo "dispatch-guard-role ($role): $*. The pane does this, not a sub-agent: stop and return it to the pane." >&2; exit 2; }
+
+role=${1:-}
+[[ $role == doer || $role == readonly ]] || usage
+
+input=$(cat)
+tool=$(jq -r '.tool_name // empty' <<<"$input" 2>/dev/null) || block "cannot read the hook input as JSON; blocked"
+cwd=$(jq -r '.cwd // empty' <<<"$input")
+
+outward='(^|[^[:alnum:]_-])(git([[:space:]]+-[cC][[:space:]]+[^[:space:]]+)*[[:space:]]+push|gh[[:space:]]+(pr[[:space:]]+(create|merge|ready|comment|review|edit|close|reopen|lock)|issue[[:space:]]+(create|comment|edit|close|reopen|delete|transfer|lock)|release[[:space:]]+(create|edit|delete|upload)|workflow[[:space:]]+(run|enable|disable)|run[[:space:]]+(rerun|cancel|delete)|label[[:space:]]+(create|edit|delete|clone)|(secret|variable)[[:space:]]+(set|delete)|repo[[:space:]]+(create|edit|delete|fork|rename|archive))|claude-tg|linear-api[[:space:]]+[[:alnum:]_-]+[[:space:]]+(state|comment|create))([^[:alnum:]_-]|$)'
+chat='(api\.telegram\.org|hooks\.slack\.com|slack\.com/api|discord(app)?\.com/api)'
+gitwrite='(^|[^[:alnum:]_-])git([[:space:]]+-[cC][[:space:]]+[^[:space:]]+)*[[:space:]]+(add|am|apply|branch[[:space:]]+-[dDmMf]|checkout|cherry-pick|clean|commit|merge|mv|pull|rebase|reset|restore|revert|rm|stash|switch|tag|worktree)([^[:alnum:]_-]|$)'
+
+if [[ $tool == Bash ]]; then
+  cmd=$(jq -r '.tool_input.command // empty' <<<"$input") || block "cannot read the Bash command; blocked"
+  if grep -Eq "$outward" <<<"$cmd"; then block "this command acts outside this machine"; fi
+  if grep -Eq "$chat" <<<"$cmd"; then block "this command posts to a chat app"; fi
+  if grep -Eq '(^|[^[:alnum:]_-])gh[[:space:]]+api([^[:alnum:]_-]|$)' <<<"$cmd"; then
+    if grep -Eq '(-X|--method)[[:space:]=]*(POST|PATCH|PUT|DELETE)|mutation' <<<"$cmd"; then block "this GitHub API call writes"; fi
+    if ! grep -Eq 'gh[[:space:]]+api[[:space:]]+graphql' <<<"$cmd" && grep -Eq '[[:space:]](-f|-F|--field|--raw-field|--input)([[:space:]=]|$)' <<<"$cmd"; then
+      block "this GitHub API call sends fields, so it writes"
+    fi
+  fi
+  if grep -Eq '(^|[^[:alnum:]_-])linear-api[[:space:]]+[[:alnum:]_-]+[[:space:]]+gql' <<<"$cmd" && grep -q mutation <<<"$cmd"; then
+    block "this Linear call writes"
+  fi
+  if [[ $role == readonly ]] && grep -Eq "$gitwrite" <<<"$cmd"; then block "this git command changes the worktree"; fi
+  exit 0
+fi
+
+[[ $role == readonly ]] || exit 0
+case $tool in
+  Edit|Write|MultiEdit|NotebookEdit) ;;
+  *) exit 0 ;;
+esac
+path=$(jq -r '.tool_input.file_path // .tool_input.notebook_path // empty' <<<"$input") || block "cannot read the file path; blocked"
+[[ -n $path ]] || exit 0
+base=${DISPATCH_WORKTREE:-$cwd}
+[[ -n $base && -d $base ]] || block "no task worktree (DISPATCH_WORKTREE) and no session folder in the hook input; blocked"
+top=$(git -C "$base" rev-parse --show-toplevel 2>/dev/null) || exit 0
+[[ $path == /* ]] || path=$cwd/$path
+dir=$(dirname "$path")
+while [[ ! -d $dir ]]; do dir=$(dirname "$dir"); done
+real=$(cd "$dir" && pwd -P)/${path#"$dir"/}
+toplevel=$(cd "$top" && pwd -P)
+case $real in
+  "$toplevel"/*) block "a read-only role writes only its report, never inside the task worktree $toplevel" ;;
+esac
+exit 0

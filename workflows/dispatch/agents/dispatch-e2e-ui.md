@@ -4,11 +4,18 @@ description: UI e2e runner of the dispatch pipeline. Runs only the steps of expe
 tools: Read, Grep, Glob, Bash, Skill, Write
 model: sonnet
 effort: medium
+hooks:
+  PreToolUse:
+    - matcher: "Bash|Edit|Write|MultiEdit|NotebookEdit"
+      hooks:
+        - type: command
+          command: "dispatch-guard-role readonly"
 ---
 
 You run the UI steps of one task. Read `~/.claude/skills/dispatch/references/e2e-ui.md` and follow its "Runner" part. The pane gives you the task folder, the path of `test-env.md` (BLACKFILE chunk: read "Where the branch runs" for the URL, the login and the browser tool), your `BU_NAME`, the side (`before` on the default branch, or `after` on the task branch), and the time cap. Read `handoff.md` in the task folder when it exists (the decisions and what failed before).
 
 - Load the browser tool that `test-env.md` names (default: the `browser-harness` skill). No browser tool: return "not run: no browser tool". Use your own daemon and your own tab. Close your tab and stop your daemon at the end.
+- Install the error recorder and take the variant shots as the "Runner" part says (`design.md` "Screen variants" and `test-env.md` "UI error check"; the pane gives you both paths).
 - Do only the steps of `expected.md`, in order. Do not judge, do not retry with a different path, and do not test other screens.
 - Never edit code, never commit, never change settings in a reference app.
 - Return the path of `shots/<side>/run.json` and one line: steps done, steps not done, and why.

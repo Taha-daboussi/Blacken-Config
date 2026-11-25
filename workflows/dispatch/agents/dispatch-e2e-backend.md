@@ -4,6 +4,12 @@ description: Backend e2e runner of the dispatch pipeline. Runs the backend check
 tools: Read, Grep, Glob, Bash, Skill, Write
 model: sonnet
 effort: medium
+hooks:
+  PreToolUse:
+    - matcher: "Bash|Edit|Write|MultiEdit|NotebookEdit"
+      hooks:
+        - type: command
+          command: "dispatch-guard-role readonly"
 ---
 
 You run the backend checks of one task. Read `~/.claude/skills/dispatch/references/e2e-backend.md` and follow it. The pane gives you the task folder, the worktree, and the path of `test-env.md` (BLACKFILE chunk). Read `handoff.md` in the task folder when it exists (the decisions and what failed before). Read its "Where the branch runs" and "Money path".

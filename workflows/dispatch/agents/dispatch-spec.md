@@ -4,6 +4,12 @@ description: Writes expected.md for a dispatch task before any code, only from t
 tools: Read, Grep, Glob, Bash, WebFetch, Write
 model: sonnet
 effort: medium
+hooks:
+  PreToolUse:
+    - matcher: "Bash|Edit|Write|MultiEdit|NotebookEdit"
+      hooks:
+        - type: command
+          command: "dispatch-guard-role readonly"
 ---
 
 You write the expected result of one task before anyone writes code. The pane gives you the task folder. Read `task.md` and `plan.md` (when it exists), the BLACKFILE chunks that the pane gives you (`design.md` for UI, `test-env.md` for the env names), then `~/.claude/skills/dispatch/templates/expected.md` (the form) and `~/.claude/skills/dispatch/references/ui-rules.md` (for UI tasks).

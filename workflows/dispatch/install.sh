@@ -45,7 +45,7 @@ chmod 700 "$config"
 link "$src/skill" "$skills/dispatch"
 for s in grilling domain-modeling grill-with-docs; do link "$src/skills/$s" "$skills/$s"; done
 for f in "$src"/agents/*.md; do link "$f" "$agents/$(basename "$f")"; done
-for f in dispatch dispatch-pick-tab dispatch-move-tab dispatch-close dispatch-stats dispatch-step dispatch-ui-diff dispatch-pr-overlap dispatch-eval dispatch-draft dispatch-guard-expected dispatch-context dispatch-title; do
+for f in dispatch dispatch-pick-tab dispatch-move-tab dispatch-close dispatch-stats dispatch-step dispatch-ui-diff dispatch-pr-overlap dispatch-eval dispatch-draft dispatch-guard-expected dispatch-guard-role dispatch-wt-check dispatch-rule-scan dispatch-context dispatch-title; do
   link "$src/bin/$f" "$bin/$f"
 done
 link "$src/statusline/dispatch-segment.sh" "$bin/dispatch-statusline"

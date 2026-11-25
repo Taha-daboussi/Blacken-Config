@@ -239,7 +239,7 @@ if [[ -r $agent_override ]]; then
 fi
 
 agent_args=()
-task_env=("DISPATCH_TASK_DIR=$task_dir" "DISPATCH_TYPE=$type")
+task_env=("DISPATCH_TASK_DIR=$task_dir" "DISPATCH_TYPE=$type" "DISPATCH_WORKTREE=$cwd")
 if [[ -n $title ]]; then
   agent_args=(--name "$title")
   task_env+=("DISPATCH_TITLE=$title")
