@@ -74,7 +74,7 @@ When a section is missing or says `none`:
 | Models (`build.md`) | the defaults of the table above |
 | Where the branch runs (`test-env.md`) | no env for a kind: "e2e not run: no env" for that kind (step 7) |
 | Money path (`test-env.md`) | a sub-agent runs no step that signs or pays and marks it NOT RUN; the pane asks the user before any such step |
-| Screen variants (`design.md`) | a web app: desktop 1440x900 and phone 390x844, no themes; a chat app or a CLI: none |
+| Screen variants (`design.md`) | a web app: a desktop pass and a phone pass at 390x844 (for UI tasks and style changes), no themes; a chat app or a CLI: one pass, no variants |
 | UI error check (`test-env.md`) | the host of the UI e2e URL; a chat app in a browser: no error check |
 | Design sources (`design.md`) | ask the user each design question; never decide a design |
 | Team review tool (`review.md`) | the Opus final check; review policy: fix each valid finding, P0 to P3 |

@@ -9,5 +9,5 @@ A chunk of `~/.config/dispatch/<name>/BLACKFILE.md`. Read it before a UI task (t
 
 ## Screen variants
 
-- Widths: for example `desktop 1440x900, phone 390x844`, or `none` (a chat bot, a CLI).
+- Widths: the desktop and the phone size of the two e2e passes, for example `desktop 1440x900, phone 390x844`, or `none` (a chat bot, a CLI: one pass).
 - Themes: for example `light, dark (prefers-color-scheme)` or the steps of the theme switch, or `none`.
