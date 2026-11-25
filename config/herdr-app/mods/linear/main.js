@@ -175,7 +175,7 @@ class IssueMenu {
         .children(PRIORITIES.map(([n, name]) => this.row(t, `pr-${n}`, priorityIcon(n), n === 1 ? "#f2994a" : null, name, n === issue.priority,
           (cx) => n !== issue.priority && this.update({ priority: n }, name, cx))))
         .child(div().mx(7).my(4).h(1).flex_none().bg(t.border))
-        .child(this.row(t, "dispatch", "mods/linear/bot.svg", null, "Dispatch task", false, () => { closeOverlay(p.overlay); dispatchIssue(issue); }))
+        .child(this.row(t, "dispatch", "mods/linear/bot.svg", null, "Dispatch task", false, () => { setShared("linear.dispatch", { issue, at: Date.now() }); closeOverlay(p.overlay); }))
         .child(this.row(t, "open", "mods/linear/linear.svg", null, "Open in Linear", false, (cx) => { closeOverlay(p.overlay); cx.open_url(issue.url); }))
         .child(this.row(t, "copy", "mods/workspace-chrome/file-text.svg", null, "Copy link", false, (cx) => { cx.write_to_clipboard(issue.url); closeOverlay(p.overlay); })));
   }
@@ -191,6 +191,7 @@ export default class Linear extends View {
     this.picked = null;
     this.collapsed = new Set();
     this.dirtyAt = shared("linear.dirty")?.at ?? 0;
+    this.dispatchAt = shared("linear.dispatch")?.at ?? 0;
     this.steps = new Map();
     this.stepsText = null;
     this.stepsError = null;
@@ -264,6 +265,11 @@ export default class Linear extends View {
   }
 
   checkDirty(cx) {
+    const ask = shared("linear.dispatch");
+    if (ask?.at && ask.at !== this.dispatchAt) {
+      this.dispatchAt = ask.at;
+      dispatchIssue(ask.issue);
+    }
     const dirty = shared("linear.dirty");
     if (!dirty?.at || dirty.at === this.dirtyAt) return;
     this.dirtyAt = dirty.at;
