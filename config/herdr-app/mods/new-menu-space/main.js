@@ -1,12 +1,13 @@
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { theme, spaces, panes, knownAgents, run, openOverlay, closeOverlay, props, window, keys, shared, setShared } from "herdr";
+import { KEY_ACTIONS, newTabInRoot } from "./space-root.js";
 
 // The last agents each machine reported, shown at once while knownAgents() checks again.
 const KNOWN = "new-menu.agents";
 
 function shortcut(name) {
-  const k = keys().find(b => b.section === "global" && b.action === name);
+  const k = keys().find(b => (b.section === "global" && b.action === name) || (b.section === "layout:main-drag" && KEY_ACTIONS[name] && b.action === KEY_ACTIONS[name]));
   if (!k?.keys.trim()) return "";
   const mac = window()?.platform === "macos";
   const names = mac ? { ctrl: "⌃", alt: "⌥", shift: "⇧", cmd: "⌘", fn: "fn" } : { ctrl: "Ctrl", alt: "Alt", shift: "Shift", cmd: "Super", fn: "Fn" };
@@ -57,13 +58,13 @@ export default class NewMenu extends View {
         const agent = /^[1-9]$/.test(e.key) ? installed[Number(e.key) - 1] : null;
         if (!agent) return;
         closeOverlay(props().overlay);
-        run("tab.new", { name: agent.name, space: space?.id, argv: agent.run });
+        newTabInRoot({ name: agent.name, space: space?.id, argv: agent.run });
       })
-      .child(this.row("terminal", svg("icons/shell.svg").size(14), "Terminal", () => run("tab.new", { space: space?.id }), shortcut("tab.new")))
+      .child(this.row("terminal", svg("icons/shell.svg").size(14), "Terminal", () => newTabInRoot({ space: space?.id }), shortcut("tab.new")))
       .child(div().px(9).pt(8).pb(4).text_size(11).text_color(t.dim).child("Start an agent"))
       .child(v_flex().flex_1().min_h(0).overflow_y_scrollbar()
         .children(choices.map((a, i) => this.row(a.key, a.tint ? svg(a.icon).size(14).text_color(t.foreground) : image(a.icon).size(14), a.name,
-          () => run("tab.new", { name: a.name, space: space?.id, argv: a.run }), a.installed ? (i < 9 ? String(i + 1) : "") : "not installed", a.installed)))
+          () => newTabInRoot({ name: a.name, space: space?.id, argv: a.run }), a.installed ? (i < 9 ? String(i + 1) : "") : "not installed", a.installed)))
         .when(this.failed || this.agents.length === 0, el => el.child(div().px(9).py(6).text_color(t.dim).child(this.failed ? "Could not check installed agents" : "Checking installed agents…"))))
       .child(div().h(1).mx(4).my(5).bg(t.border))
       .child(this.row("space", div().w(14).child("+"), "New space", () => run("space.new"), shortcut("space.new")))

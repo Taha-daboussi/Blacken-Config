@@ -7,6 +7,7 @@
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { panes, props, run, theme, home, layout, shared, setShared } from "herdr";
+import { splitInRoot } from "./space-root.js";
 
 // Match the first visible tab frame, including the active child of a stack.
 function paneFrame(node) {
@@ -53,7 +54,8 @@ export default class Pane extends View {
       .hover((s) => s.bg(t.hover).text_color(t.foreground))
       .on_click((_e, cx) => {
         cx.stop_propagation();
-        run(command, args);
+        if (command === "pane.split") splitInRoot(args.direction, args.pane);
+        else run(command, args);
       })
       .child(svg(`mods/pane-drag/${icon}.svg`).size(14));
   }

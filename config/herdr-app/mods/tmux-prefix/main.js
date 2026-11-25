@@ -1,6 +1,7 @@
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { closeOverlay, focused, hc, nextCommand, props, run, theme } from "herdr";
+import { splitInRoot, newTabInRoot } from "./space-root.js";
 
 // Edit these two things to make the example yours. Only repeatable actions
 // start a timer: the first key after Ctrl+B can take as long as you like.
@@ -94,7 +95,9 @@ export default class TmuxPrefix extends View {
     }
     const [, , command, args = {}, repeatable = false] = binding;
     if (!repeatable) this.dismiss();
-    run(command, args);
+    if (command === "pane.split") splitInRoot(args.direction);
+    else if (command === "tab.new") newTabInRoot(args);
+    else run(command, args);
     if (repeatable) {
       this.repeat = true;
       const generation = ++this.generation;

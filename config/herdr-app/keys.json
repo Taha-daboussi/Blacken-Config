@@ -95,5 +95,11 @@
   },
   "mod:tmux-prefix": {
     "ctrl-b": "tmux-prefix.send-prefix"
+  },
+  "layout:main-drag": {
+    "ctrl-t": "tabs-drop.new-tab",
+    "ctrl-shift-t": "tabs-drop.new-tab",
+    "ctrl-shift-o": "tabs-drop.split-right",
+    "ctrl-shift-e": "tabs-drop.split-down"
   }
 }

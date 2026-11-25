@@ -6,6 +6,7 @@
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { run, props, closeOverlay, openOverlay, theme, keys, terminals, spaces, panes, exec } from "herdr";
+import { KEY_ACTIONS, splitInRoot, newTabInRoot } from "./space-root.js";
 
 // Where a space is now: its first terminal's live folder, else where it was made.
 function place(s) {
@@ -89,7 +90,8 @@ function menuIcon(command, args) {
 function shortcut(name, args) {
   // `pane.split:right` binds pane.split with { direction: "right" }.
   const value = args && Object.values(args)[0];
-  const k = keys().find((b) => b.section === "global" && (b.action === name || b.action === `${name}:${value}`));
+  const alias = KEY_ACTIONS[`${name}:${value}`] ?? KEY_ACTIONS[name];
+  const k = keys().find((b) => (b.section === "global" && (b.action === name || b.action === `${name}:${value}`)) || (b.section === "layout:main-drag" && alias && b.action === alias));
   return k ? k.keys : "";
 }
 
@@ -114,6 +116,8 @@ export default class Menu extends View {
     if (!it) return;
     closeOverlay(props()?.overlay);
     if (it[1] === "worktree") openOverlay({ mod: "worktree", kind: "dialog", ...(it[2].action === "open" ? { width: 560, height: 480 } : { width: 440, height: 260 }), props: it[2] });
+    else if (it[1] === "pane.split") splitInRoot(it[2].direction, it[2].pane);
+    else if (it[1] === "tab.new") newTabInRoot(it[2]);
     else run(it[1], it[2]);
   }
 
