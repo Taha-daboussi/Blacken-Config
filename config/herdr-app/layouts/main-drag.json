@@ -135,7 +135,15 @@
                           "id": "files",
                           "type": "block",
                           "content": {
-                            "mod": "files"
+                            "mod": "files-space",
+                            "props": {
+                              "roots": {
+                                "sp7eeed64957d3160eb6f81d81a240cb27": "__HOME__/Desktop/work/Repos/ROAS-X-1DSLABS",
+                                "sp4e152204da53281b76f515ddc563a095": "__HOME__/sandbox/DawnTrade/core",
+                                "sp7c8cd31f78859a027fc4af1e10472fb6": "__HOME__/Desktop/work/Repos/monorepo",
+                                "pcpc/spf6d99fc06ebc5278dd85b8a662b902cf": "C:/Users/pc/Desktop/Blacken/work/repos/monorepo"
+                              }
+                            }
                           }
                         },
                         {
