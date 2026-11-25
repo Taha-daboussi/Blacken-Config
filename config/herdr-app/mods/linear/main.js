@@ -94,25 +94,28 @@ function ago(sec) {
   return m < 60 ? `${m} min ago` : m < 2880 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} days ago`;
 }
 
-async function dispatchIssue(ws, issue) {
-  const label = WORKSPACES.find((w) => w.id === ws)?.label ?? ws;
-  const space = spaces().find((s) => spaceWorkspace(s) === ws);
+async function dispatchIssue(issue) {
+  const sel = focused();
+  const space = spaces().find((s) => s.id === sel?.space) ?? spaces().find((s) => s.active);
   if (!space) {
-    notify({ title: "Linear", body: `No Herdr space for ${label}. Open its repo as a space first.`, level: "warning" });
+    notify({ title: "Linear", body: "No Herdr space is open.", level: "warning" });
     return;
   }
-  const task = `/dispatch ${issue.url} ${issue.title}`;
-  const terms = new Map(terminals().map((t) => [t.address, t]));
-  const candidates = agents().filter((a) => a.space === space.id && a.app === "claude-code" && !terms.get(a.address)?.labels?.["dispatch.agent"]);
-  const dispatcher = candidates.find((a) => a.tab_name === "Main") ?? candidates[0];
-  if (!dispatcher) {
+  const task = `dispatch this task please: ${issue.url} ${issue.title}`;
+  const main = space.tabs.find((t) => t.name === "Main");
+  if (!main) {
     run("tab.new", { name: "Main", space: space.id, folder: space.folder, argv: ["claude"], task, focus: false });
-    notify({ title: "Linear", body: `Started a dispatcher in ${space.name} for ${issue.identifier}.`, level: "success" });
+    notify({ title: "Linear", body: `Started a new Main tab in ${space.name} for ${issue.identifier}.`, level: "success" });
     return;
   }
-  const r = await hc(["send", dispatcher.address, task]);
-  if (r.code === 0) notify({ title: "Linear", body: `Sent ${issue.identifier} to the dispatcher in ${space.name} / ${dispatcher.tab_name}.`, level: "success" });
-  else notify({ title: "Linear", body: `Could not send ${issue.identifier}: ${(r.stderr || r.stdout).trim()}`, level: "error" });
+  const local = (id) => id.slice(id.indexOf("/") + 1);
+  const args = ["run", "--bg", "--keep", "--no-parent", "--label", `herdr.space=${local(space.id)}`, "--label", `herdr.tab=${local(main.id)}`];
+  if (space.machine) args.push("--on", space.machine);
+  if (space.folder) args.push("--cwd", space.folder);
+  args.push("--", "claude", task);
+  const r = await hc(args);
+  if (r.code === 0) notify({ title: "Linear", body: `Started a new pane in ${space.name} / Main for ${issue.identifier}.`, level: "success" });
+  else notify({ title: "Linear", body: `Could not start a pane for ${issue.identifier}: ${(r.stderr || r.stdout).trim()}`, level: "error" });
 }
 
 class IssueMenu {
@@ -172,7 +175,7 @@ class IssueMenu {
         .children(PRIORITIES.map(([n, name]) => this.row(t, `pr-${n}`, priorityIcon(n), n === 1 ? "#f2994a" : null, name, n === issue.priority,
           (cx) => n !== issue.priority && this.update({ priority: n }, name, cx))))
         .child(div().mx(7).my(4).h(1).flex_none().bg(t.border))
-        .child(this.row(t, "dispatch", "mods/linear/bot.svg", null, "Dispatch an agent", false, () => { closeOverlay(p.overlay); dispatchIssue(p.ws, issue); }))
+        .child(this.row(t, "dispatch", "mods/linear/bot.svg", null, "Dispatch task", false, () => { closeOverlay(p.overlay); dispatchIssue(issue); }))
         .child(this.row(t, "open", "mods/linear/linear.svg", null, "Open in Linear", false, (cx) => { closeOverlay(p.overlay); cx.open_url(issue.url); }))
         .child(this.row(t, "copy", "mods/workspace-chrome/file-text.svg", null, "Copy link", false, (cx) => { cx.write_to_clipboard(issue.url); closeOverlay(p.overlay); })));
   }
