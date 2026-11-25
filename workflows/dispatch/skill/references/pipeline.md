@@ -126,7 +126,7 @@ Each builder commits on the branch. A question from it: ask the user, then send 
 1. Run `/simplify` one time on the files that the branch changed (`git diff --name-only origin/<default>...HEAD`). Follow section 8 of `references/coding-principles.md` for what to decline.
 2. Run the anti-slop lint when BLACKFILE.md names it, on the changed files only.
 3. Run the "Gate" command. Then `dispatch-rule-scan` (the "Rule scan" lines of `build.md`, on the diff of the branch). Then the scoped tests of "Tests". Each one that says `none` is skipped (Defaults).
-4. A red gate, a rule-scan hit, or a red test: send it to `dispatch-builder` as a fix round ("Fix rounds"). Then run the gate and the tests again.
+4. A red gate, a rule-scan hit, or a red test: send it to `dispatch-builder` as a fix round ("Fix rounds"). A rule-scan hit that the user allowed for this task (a line under "Decisions" in `handoff.md`, for example "edit README.md") is not a fix round: write it in `report.md`. Then run the gate and the tests again.
 5. Commit the simplify edits. Push the branch (`git push -u origin <branch>`), and check that `git rev-parse origin/<branch>` equals `HEAD`.
 
 ## Step 6: Review
