@@ -58,6 +58,8 @@ The "Models" section of the `BLACKFILE` of a project can override these values. 
   - `dispatch-guard-role`: the hook of each sub-agent: no push, no GitHub, Linear or chat write; read-only roles cannot change the worktree
   - `dispatch-wt-check`: proves that a read-only sub-agent left the worktree as it was
   - `dispatch-ui-diff`: compares the expected screen with the DOM text of a shot, plus a pixel diff
+  - `dispatch-count`: counts the working panes of a space and reads the limit (see "Limit of working panes")
+  - `dispatch-queue`: lists, starts and drops the tasks that `dispatch` held back at the limit
   - `dispatch-pr-overlap`: lists the other open PRs whose added lines use a function that this branch changed (step 8, no model)
   - `dispatch-eval`: prepares, runs (step `check`) and records the eval cases of the learn loop, also against a draft (`--skill`, `--agents`, `--config`) and across all repos (`--all-repos`)
   - `dispatch-draft`: puts a learn-loop mitigation on a draft branch (skill repo or private config repo), then applies or drops it after the user answers
@@ -66,6 +68,24 @@ The "Models" section of the `BLACKFILE` of a project can override these values. 
   - `dispatch-stats`: the time per step of one task (wall, wait, active, sub-agents, browser), from `steps.tsv` and the Claude session logs
 - `statusline/dispatch-segment.sh` goes to `~/.local/bin/dispatch-statusline`: the footer part
 - `hooks/dispatch-main.sh` goes to `~/.claude/hooks`. Optional `SessionStart` hook: it tells each herdr session that `dispatch` did not start that it is the dispatcher.
+
+## Limit of working panes
+
+At most 3 panes work at the same time in one herdr space (one tmux session outside herdr). The limit protects your focus: you cannot watch ten panes at once.
+
+- A new task above the limit is **queued**. `dispatch` prints `{"queued": true, ...}` and the message "queued. 3 of 3 panes are working in this space. This task starts when a pane finishes or waits for you."
+- The queue starts the oldest task by itself when a pane finishes (`dispatch-close`), reaches step 10, or waits for you (`dispatch-step --wait`).
+- These panes do not count: a pane that waits for you, a pane at step 10, and monitor panes. Monitor and init tasks are never queued.
+- To start a task at once, add `--force`. To see the queue, run `dispatch-queue list`. To delete a task from it, run `dispatch-queue drop <file>`.
+- A pane that waits for you counts again when it works again. So the number can be above the limit for a short time. The limit is checked only when a task starts.
+
+Each user sets the number (0 means no limit). The first value that exists wins:
+
+1. The environment variable `DISPATCH_MAX_WORKING`.
+2. The line `max_working=<n>` in `~/.config/dispatch/config`.
+3. The default, 3.
+
+Held tasks are in `~/.local/share/dispatch/queue/<space>/`. A task that fails to start stays there as a `.failed` file, and `dispatch-queue list` shows it.
 
 ## Project files (private)
 

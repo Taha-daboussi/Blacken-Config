@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat >&2 <<'EOF2'
+dispatch-count: count the working dispatch panes, and read the limit.
+
+Usage:
+  dispatch-count max
+  dispatch-count working herdr <space> [--exclude <terminal>]
+  dispatch-count working tmux <session> [--exclude <terminal>]
+
+max: the limit of working panes in one space. 0 means no limit.
+  Order: env DISPATCH_MAX_WORKING, then "max_working=<n>" in ${XDG_CONFIG_HOME:-$HOME/.config}/dispatch/config, then 3.
+working: the panes of that space that are alive, are not a monitor, do not wait for the user, and are not at step 10.
+EOF2
+  exit 2
+}
+
+die() { echo "dispatch-count: $*" >&2; exit 1; }
+
+max_working() {
+  local v=${DISPATCH_MAX_WORKING:-} cfg=${XDG_CONFIG_HOME:-$HOME/.config}/dispatch/config src=DISPATCH_MAX_WORKING
+  if [[ -z $v && -r $cfg ]]; then
+    v=$(sed -n 's/^[[:space:]]*max_working[[:space:]]*=[[:space:]]*\([^[:space:]#]*\).*/\1/p' "$cfg" | tail -n1)
+    src=$cfg
+  fi
+  v=${v:-3}
+  [[ $v =~ ^[0-9]+$ ]] || die "max working must be a whole number, 0 or more; got \"$v\" from $src"
+  echo "$v"
+}
+
+cmd=${1:-}
+case $cmd in
+  max) max_working ;;
+  working)
+    (($# >= 3)) || usage
+    runner=$2 scope=$3 exclude=
+    shift 3
+    while (($#)); do
+      case $1 in
+        --exclude) (($# >= 2)) || usage; exclude=$2; shift 2 ;;
+        *) usage ;;
+      esac
+    done
+    case $runner in
+      herdr)
+        terms=$(hc ls --json --label "herdr.space=$scope" --label dispatch.agent=1 | jq -r '.terminals[].address') \
+          || die "hc ls failed for space $scope"
+        n=0
+        for t in $terms; do
+          [[ $t == "$exclude" ]] && continue
+          info=$(hc get "$t") || die "hc get $t failed"
+          if jq -e '.state == "live"
+              and ((.labels["dispatch.type"] // "") != "monitor")
+              and ((.labels["dispatch.wait"] // "0") != "1")
+              and (((.labels["dispatch.step"] // "") | startswith("10/")) | not)' >/dev/null <<<"$info"; then
+            n=$((n + 1))
+          fi
+        done
+        echo "$n"
+        ;;
+      tmux)
+        tmux has-session -t "=$scope" 2>/dev/null || { echo 0; exit 0; }
+        tmux list-windows -t "=$scope" -F '#{@dispatch_term}|#{@dispatch_type}|#{@dispatch_wait}|#{@dispatch_step}' \
+          | awk -F'|' -v ex="$exclude" '$1 != "" && $1 != ex && $2 != "monitor" && $3 != "1" && $4 !~ /^10\// {n++} END {print n + 0}'
+        ;;
+      *) usage ;;
+    esac
+    ;;
+  *) usage ;;
+esac

@@ -12,6 +12,7 @@ if [[ -n ${DISPATCH_TERM:-} && -z ${1:-} ]]; then
   [[ $(tmux show-options -w -t "$TMUX_PANE" -v @dispatch_term 2>/dev/null) == "$DISPATCH_TERM" ]] \
     || die "the tmux window of $TMUX_PANE is not the dispatch pane $DISPATCH_TERM"
   echo "$now close $DISPATCH_TERM" >>"$log"
+  "$(dirname "$(readlink -f "$0")")/dispatch-queue" kick --exclude "$DISPATCH_TERM" || echo "dispatch-close: could not start the queue drain" >&2
   tmux run-shell -b "sleep 2; tmux kill-window -t '$TMUX_PANE'"
   echo "dispatch-close: $DISPATCH_TERM closes in 2s"
   exit 0
@@ -23,6 +24,7 @@ info=$(hc get "$term") || die "no terminal $term"
 jq -e '.labels["dispatch.agent"] == "1"' >/dev/null <<<"$info" || die "$term is not a dispatch agent pane"
 
 echo "$now close $term $(jq -r '.name // ""' <<<"$info")" >>"$log"
+"$(dirname "$(readlink -f "$0")")/dispatch-queue" kick --exclude "$term" || echo "dispatch-close: could not start the queue drain" >&2
 
 closer=(bash -c 'sleep 2; hc keep "$0" --off; hc kill "$0"; hc rm "$0"' "$term")
 if command -v setsid >/dev/null; then

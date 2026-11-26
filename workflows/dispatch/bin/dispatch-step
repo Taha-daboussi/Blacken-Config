@@ -87,6 +87,11 @@ else
     || echo "dispatch-step: hc label failed for $term" >&2
 fi
 
+if ((waiting)) || ((n == 10)); then
+  "$(dirname "$(readlink -f "$0")")/dispatch-queue" kick --exclude "$term" \
+    || echo "dispatch-step: could not start the queue drain" >&2
+fi
+
 if ((waiting)) && [[ $label == manual-test && -z ${DISPATCH_TERM:-} ]]; then
   "$(dirname "$(readlink -f "$0")")/dispatch-move-tab" "Manual Test" \
     || echo "dispatch-step: could not move $term to the Manual Test tab; tell the user where the pane is" >&2

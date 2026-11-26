@@ -10,7 +10,7 @@ Usage:
   dispatch --type ui-bug|be-bug|ui-feature|be-feature|review|feedback|retro|monitor|init --name <slug> (--prompt <text> | --prompt-file <file>)
            [--title <pane title>]
            [--branch <new-branch> | --on <branch> | --pr <number> | --no-worktree] [--plan | --no-plan]
-           [--repo <path>] [--space <id>] [--runner herdr|tmux]
+           [--repo <path>] [--space <id>] [--runner herdr|tmux] [--force]
 
   --type      ui-bug -> UI Bugs, be-bug -> BE Bugs, ui-feature -> UI Features, be-feature -> BE Features,
               feedback|retro -> Own Review, review -> Teammate Review, monitor -> Monitors, init -> Setup
@@ -28,6 +28,12 @@ Usage:
   --runner    herdr (default in a herdr terminal or with --space) or tmux (default elsewhere). tmux puts
               each pane in a window of the session $DISPATCH_TMUX_SESSION (default "dispatch").
 
+  --force     start now, even when the limit of working panes is reached
+
+Limit: at most DISPATCH_MAX_WORKING panes work at the same time in one space (default 3; 0 = no limit; or
+"max_working=<n>" in ~/.config/dispatch/config). A pane that waits for you, a pane at step 10 and a monitor do not count.
+At the limit, dispatch holds the task, prints {"queued": true, ...} and starts it when a pane finishes or waits for you
+(dispatch-queue list). Monitor and init tasks are never held.
 Env: DISPATCH_MAX_PANES (default 4) panes per herdr tab before "UI Bugs 2" opens (dispatch-pick-tab).
 DISPATCH_RUNNER as --runner.
 Agent command: "<YYYY-MM-DD> <command>" in $XDG_RUNTIME_DIR/dispatch-<space>.agent (tmux: dispatch-tmux-<session>.agent)
@@ -38,7 +44,7 @@ EOF
 
 die() { echo "dispatch: $*" >&2; exit 1; }
 
-type= name= title= prompt= prompt_file= branch= on= pr= no_wt= repo= space= plan= runner=${DISPATCH_RUNNER:-} session=
+type= name= title= prompt= prompt_file= branch= on= pr= no_wt= repo= space= plan= runner=${DISPATCH_RUNNER:-} session= force=
 while (($#)); do
   case $1 in
     --type) type=$2; shift 2 ;;
@@ -55,6 +61,7 @@ while (($#)); do
     --repo) repo=$2; shift 2 ;;
     --space) space=$2; shift 2 ;;
     --runner) runner=$2; shift 2 ;;
+    --force) force=1; shift ;;
     -h|--help) usage ;;
     *) die "unknown argument: $1" ;;
   esac
@@ -135,8 +142,15 @@ esac
 cwd=${main_checkout:-$PWD}
 wt_note=
 new_wt= new_branch= launched=
+locked=
+unlock() {
+  [[ -n $locked ]] || return 0
+  locked=
+  if command -v flock >/dev/null; then exec 9>&-; else rmdir "$lock.d"; fi
+}
 cleanup() {
   local rc=$?
+  unlock
   [[ -z $launched && -n $new_wt ]] || return 0
   git -C "$main_checkout" worktree remove --force "$new_wt" && echo "dispatch: removed the worktree $new_wt (the start failed)" >&2
   [[ -z $new_branch ]] || { git -C "$main_checkout" branch -D "$new_branch" >/dev/null && echo "dispatch: removed the new branch $new_branch" >&2; }
@@ -144,6 +158,48 @@ cleanup() {
 }
 trap cleanup EXIT
 trap 'exit 130' INT TERM HUP
+
+lock_key=$([[ $runner == herdr ]] && echo "$space" || echo "tmux-$session")
+lock=${XDG_RUNTIME_DIR:-/tmp}/dispatch-$lock_key.lock
+if command -v flock >/dev/null; then
+  exec 9>"$lock"
+  flock 9
+else
+  until mkdir "$lock.d" 2>/dev/null; do sleep 0.2; done
+fi
+locked=1
+
+here=$(dirname "$(readlink -f "$0")")
+case $type in
+  monitor|init) ;;
+  *)
+    if [[ -z $force ]]; then
+      max_working=$("$here/dispatch-count" max) || die "cannot read the limit of working panes"
+      if ((max_working > 0)); then
+        scope=$([[ $runner == herdr ]] && echo "$space" || echo "$session")
+        working=$("$here/dispatch-count" working "$runner" "$scope" ${DISPATCH_COUNT_EXCLUDE:+--exclude "$DISPATCH_COUNT_EXCLUDE"}) || die "cannot count the working panes"
+        if ((working >= max_working)); then
+          if [[ -n ${DISPATCH_FROM_QUEUE:-} ]]; then exit 75; fi
+          qdir=${XDG_DATA_HOME:-$HOME/.local/share}/dispatch/queue/$lock_key
+          mkdir -p "$qdir"
+          qfile=$qdir/$(date +%s%N)-$name.json
+          jq -n --arg type "$type" --arg name "$name" --arg title "$title" --arg prompt "$prompt" --arg branch "$branch" \
+            --arg on "$on" --arg pr "$pr" --arg no_wt "$no_wt" --arg plan "$plan" --arg repo "${main_checkout:-}" \
+            --arg space "$space" --arg runner "$runner" --arg session "$session" --arg cwd "$PWD" --arg at "$(date '+%Y-%m-%dT%H:%M:%S%z')" \
+            '{type: $type, name: $name, title: $title, prompt: $prompt, branch: $branch, on: $on, pr: $pr, no_wt: $no_wt, plan: $plan,
+              repo: $repo, space: $space, runner: $runner, session: $session, cwd: $cwd, queued_at: $at}' >"$qfile.tmp"
+          mv "$qfile.tmp" "$qfile"
+          echo "dispatch: queued. $working of $max_working panes are working in this space. This task starts when a pane finishes or waits for you. Run: dispatch-queue list. To start it now, run the same command with --force." >&2
+          jq -n --arg name "$name" --arg file "$qfile" --argjson working "$working" --argjson max "$max_working" \
+            '{queued: true, name: $name, working: $working, max: $max, file: $file}'
+          unlock
+          trap - EXIT
+          exit 0
+        fi
+      fi
+    fi
+    ;;
+esac
 
 if [[ -n $branch || -n $on || -n $pr ]]; then
   [[ -n $main_checkout ]] || die "not in a git repo; pass --repo"
@@ -219,18 +275,6 @@ full_prompt="$head
 
 $prompt"
 
-lock_key=$([[ $runner == herdr ]] && echo "$space" || echo "tmux-$session")
-lock=${XDG_RUNTIME_DIR:-/tmp}/dispatch-$lock_key.lock
-if command -v flock >/dev/null; then
-  exec 9>"$lock"
-  flock 9
-else
-  until mkdir "$lock.d" 2>/dev/null; do sleep 0.2; done
-fi
-unlock() {
-  if command -v flock >/dev/null; then exec 9>&-; else rmdir "$lock.d"; fi
-}
-
 agent_cmd=claude
 agent_override=${XDG_RUNTIME_DIR:-/tmp}/dispatch-$lock_key.agent
 if [[ -r $agent_override ]]; then
@@ -258,7 +302,7 @@ case $runner in
     while grep -qxF "$term_name" <<<"$live"; do term_name="$name-$n"; n=$((n + 1)); done
 
     started=$(hc run --bg --json --keep --no-parent --cwd "$cwd" --name "$term_name" \
-      --label "herdr.space=$space" --label "herdr.tab=$tab" --label "dispatch.agent=1" \
+      --label "herdr.space=$space" --label "herdr.tab=$tab" --label "dispatch.agent=1" --label "dispatch.type=$type" \
       -- "$shell" -ic '"$@"; exec "$0" -i' "$shell" env -u DISPATCH_TERM -u DISPATCH_RUNNER -u DISPATCH_NAME \
       "${task_env[@]}" "$agent_cmd" "${agent_args[@]}" "$full_prompt" 9>&-)
     launched=1

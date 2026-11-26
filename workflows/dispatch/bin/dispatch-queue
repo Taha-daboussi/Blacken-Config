@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat >&2 <<'EOF2'
+dispatch-queue: the tasks that dispatch held back because the limit of working panes was reached.
+
+Usage:
+  dispatch-queue list
+  dispatch-queue drain [--exclude <terminal>]   start the oldest held tasks while a slot is free
+  dispatch-queue kick [--exclude <terminal>]    as drain, detached in the background (used by dispatch-step and dispatch-close)
+  dispatch-queue drop <file>                    delete one held task
+
+Held tasks are in ${XDG_DATA_HOME:-$HOME/.local/share}/dispatch/queue/<space>/. A task starts again with the same options.
+The limit is DISPATCH_MAX_WORKING (see dispatch-count).
+EOF2
+  exit 2
+}
+
+die() { echo "dispatch-queue: $*" >&2; exit 1; }
+
+here=$(dirname "$(readlink -f "$0")")
+root=${XDG_DATA_HOME:-$HOME/.local/share}/dispatch/queue
+log=${XDG_STATE_HOME:-$HOME/.local/state}/dispatch/queue.log
+cmd=${1:-}
+shift || true
+
+drain() {
+  local exclude= dir f run rc args cwd
+  while (($#)); do
+    case $1 in
+      --exclude) (($# >= 2)) || usage; exclude=$2; shift 2 ;;
+      *) usage ;;
+    esac
+  done
+  [[ -d $root ]] || return 0
+  for dir in "$root"/*/; do
+    [[ -d $dir ]] || continue
+    for f in "$dir"*.json; do
+      [[ -e $f ]] || continue
+      run=$f.run
+      mv "$f" "$run" 2>/dev/null || continue
+      args=()
+      while IFS= read -r enc; do args+=("$(printf '%s' "$enc" | base64 -d)"); done < <(jq -r '[
+          "--type", .type, "--name", .name,
+          (if .title != "" then "--title", .title else empty end),
+          "--prompt", .prompt,
+          (if .branch != "" then "--branch", .branch else empty end),
+          (if .on != "" then "--on", .on else empty end),
+          (if .pr != "" then "--pr", .pr else empty end),
+          (if .no_wt != "" then "--no-worktree" else empty end),
+          (if .plan != "" then .plan else empty end),
+          (if .repo != "" then "--repo", .repo else empty end),
+          (if .space != "" then "--space", .space else empty end),
+          "--runner", .runner
+        ] | .[] | @base64' "$run")
+      cwd=$(jq -r '.cwd' "$run")
+      rc=0
+      (
+        cd "$cwd" 2>/dev/null || cd "$HOME"
+        export DISPATCH_FROM_QUEUE=1
+        [[ $(jq -r '.session' "$run") == "" ]] || export DISPATCH_TMUX_SESSION=$(jq -r '.session' "$run")
+        [[ -z $exclude ]] || export DISPATCH_COUNT_EXCLUDE=$exclude
+        "$here/dispatch" "${args[@]}" >/dev/null
+      ) || rc=$?
+      if ((rc == 0)); then
+        echo "$(date '+%Y-%m-%dT%H:%M:%S%z') started $(jq -r '.name' "$run") from the queue"
+        rm -f "$run"
+      elif ((rc == 75)); then
+        mv "$run" "$f"
+        break
+      else
+        echo "$(date '+%Y-%m-%dT%H:%M:%S%z') FAILED $(jq -r '.name' "$run") (exit $rc); kept as ${f%.json}.failed" >&2
+        mv "$run" "${f%.json}.failed"
+      fi
+    done
+  done
+}
+
+case $cmd in
+  list)
+    [[ -d $root ]] || { echo "dispatch-queue: no held tasks"; exit 0; }
+    found=0
+    for f in "$root"/*/*.json "$root"/*/*.failed; do
+      [[ -e $f ]] || continue
+      found=1
+      state=queued
+      [[ $f == *.failed ]] && state=FAILED
+      jq -r --arg f "$f" --arg s "$state" '"\($s)\t\(.queued_at)\t\(.type)\t\(.name)\t\(.title)\t\($f)"' "$f"
+    done
+    ((found)) || echo "dispatch-queue: no held tasks"
+    ;;
+  drain) drain "$@" ;;
+  kick)
+    mkdir -p "${log%/*}"
+    closer=("$0" drain "$@")
+    if command -v setsid >/dev/null; then
+      setsid -f "${closer[@]}" >>"$log" 2>&1 </dev/null
+    elif command -v perl >/dev/null; then
+      perl -MPOSIX -e 'fork and exit; POSIX::setsid(); exec @ARGV or die "exec: $!"' "${closer[@]}" >>"$log" 2>&1 </dev/null
+    else
+      die "needs setsid or perl to run in the background"
+    fi
+    ;;
+  drop)
+    (($# == 1)) || usage
+    [[ $1 == "$root"/*/*.json || $1 == "$root"/*/*.failed ]] || die "$1 is not a held task"
+    [[ $1 != *..* ]] || die "bad path"
+    rm -f -- "$1"
+    echo "dispatch-queue: dropped $1"
+    ;;
+  *) usage ;;
+esac

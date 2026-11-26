@@ -110,6 +110,8 @@ dispatch --type ui-bug --name abc-123 --title "ABC-123 Slippage check is missing
 
 It prints JSON: `tab`, `terminal`, `name`, `title`, `cwd`, `task_dir`, and `branch` or `pr`. On an error (the worktree path exists, the space is not open, no BLACKFILE.md), report the error; do not work around it. The script puts the pane in the first tab of that type with fewer than 4 panes (`DISPATCH_MAX_PANES`), and opens `UI Bugs 2`, `UI Bugs 3`… when all are full. The user's view does not move.
 
+At most 3 panes work at the same time in one space (`DISPATCH_MAX_WORKING`, set by the user; see README). At the limit, `dispatch` does not start the pane. It prints `{"queued": true, "name": ..., "working": ..., "max": ...}` and exits 0. Tell the user in one line: the task is queued, and it starts when a pane finishes or waits. Do not use `--force` unless the user says so.
+
 ## 5. Issue and board: work started
 
 When the task links an issue, do the "work starts" steps of BLACKFILE.md right after `dispatch` succeeds (for example the issue state In Progress and a board card, in `issues.md`). Do not ask the user. Check the workspace first (the check that `issues.md` names, for example a `whoami`). Never move an issue back. When a step fails, tell the user.
