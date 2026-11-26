@@ -13,6 +13,33 @@ The Claude status line shows the step of each pane (`⚙ dispatch 6/10 review`),
 
 When a person finds a problem after a step said "done" (a review comment, a UI note, a bug in the manual test), a retro finds which step missed it and why, proposes the strongest fix for that class (a check that always runs, a pipeline change, or a project rule), and proves it on the old commit with an eval case.
 
+## Agents, models and effort
+
+The pane itself runs plain `claude`, so it uses the default model and effort of the session. The `dispatch` script sets no `--model`. Each role sub-agent has its model and effort in `agents/<name>.md`.
+
+| # | Step | Who does it | Model | Effort |
+|---|------|-------------|-------|--------|
+| 1 | Intake | the pane | session default | session default |
+| 2 | Plan | `dispatch-planner` | Opus | high |
+| 2 | Plan check | `dispatch-critic` | Opus | high |
+| 3 | Expected result | `dispatch-spec` | Sonnet | medium |
+| 4 | Build (logic) | `dispatch-builder` | Opus | high |
+| 4 | Build (UI and UX) | `dispatch-builder` with `model: sonnet` | Sonnet | high |
+| 5 | Simplify, gate, rule scan | the pane (`/simplify`) | session default | session default |
+| 6 | Review finders A-D, final check | `dispatch-reviewer` | Opus | high |
+| 6 | Disprove, re-review, main-changes list | `dispatch-reviewer` with `model: sonnet` | Sonnet (Opus for a money path) | high |
+| 6 | Fixes | `dispatch-builder` | Opus, or Sonnet for UI-only fixes | high |
+| 7 | Backend e2e | `dispatch-e2e-backend` | Sonnet | medium |
+| 7 | UI e2e runner (desktop and phone) | `dispatch-e2e-ui` | Sonnet | medium |
+| 7 | UI judge | `dispatch-ui-judge` | Sonnet | medium |
+| 8 | Draft PR | the pane | session default | session default |
+| 9 | Manual test | the user and the pane | session default | session default |
+| 10 | Done | the pane | session default | session default |
+| learn | Read PR comments | `dispatch-feedback` | Sonnet | medium |
+| learn | Retro | `dispatch-retro` | Opus | high |
+
+The "Models" section of the `BLACKFILE` of a project can override these values. Example: a project can force Opus for every review call.
+
 ## What is here
 
 - `skill/` goes to `~/.claude/skills/dispatch` (symlink)
