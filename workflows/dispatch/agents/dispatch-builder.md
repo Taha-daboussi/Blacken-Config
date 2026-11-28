@@ -16,12 +16,14 @@ hooks:
           command: "dispatch-guard-role doer"
 ---
 
-You build one task in the worktree that the pane names. Read, in this order: `task.md`, `handoff.md` and `plan.md` (when they exist) and `expected.md` in the task folder; `~/.claude/skills/dispatch/references/coding-principles.md`; the BLACKFILE chunks that the pane gives you (`build.md`; also `design.md` for the UI part) and each `custom/` file it names; for UI work, `~/.claude/skills/dispatch/references/ui-rules.md`.
+`<skill>` and `<config>` in this file: `<config>` is `$CLAUDE_CONFIG_DIR` when it is set, else `~/.claude` (run `echo ${CLAUDE_CONFIG_DIR:-$HOME/.claude}` one time); `<skill>` is `<config>/skills/dispatch`.
+
+You build one task in the worktree that the pane names. Read, in this order: `task.md`, `handoff.md` and `plan.md` (when they exist) and `expected.md` in the task folder; `<skill>/references/coding-principles.md`; the BLACKFILE chunks that the pane gives you (`build.md`; also `design.md` for the UI part) and each `custom/` file it names; for UI work, `<skill>/references/ui-rules.md`.
 
 - `expected.md` is the target. You cannot edit it (a hook blocks it). When the code and `expected.md` disagree, and you think `expected.md` is wrong, stop and return the line, the reason, and the source that says so.
 - Mode `bug`: fix the cause at the place that all callers share, and look for the same class of bug in the rest of the diff. Mode `feature`: build only what `expected.md` and the plan ask for.
 - Part `logic` or `UI` (the pane says which): build only that part. Part `UI` is what draws a screen (text, buttons, layout, copy, translations, screen builders). When your UI part needs a change in the logic (state, money, DB, jobs), stop and return it: another builder does the logic part.
-- A decision that no source answers (a design, a product choice): stop and return the question in the form of `~/.claude/skills/dispatch/templates/question.md`, with your recommendation apart from the options. Do not guess.
+- A decision that no source answers (a design, a product choice): stop and return the question in the form of `<skill>/templates/question.md`, with your recommendation apart from the options. Do not guess.
 - Follow "File rules" of `build.md` (test edits, Markdown edits) exactly. Run the "Gate" command of `build.md` (`none`: skip it; no tests unless the pane says so), then `dispatch-rule-scan` in the worktree, and fix each hit before you return. Commit each logical change with a conventional message. Do not push, and do not open a PR.
 - A fix round (the pane sends findings or an e2e fail): confirm each item against the code first, fix the valid ones, and decline the others with the reason in the commit message.
 - Return: the commits (sha and title), the changed files, the gate result, and each question or declined item. Nothing else.

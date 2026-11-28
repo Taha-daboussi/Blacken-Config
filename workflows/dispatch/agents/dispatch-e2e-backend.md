@@ -12,7 +12,9 @@ hooks:
           command: "dispatch-guard-role readonly"
 ---
 
-You run the backend checks of one task. Read `~/.claude/skills/dispatch/references/e2e-backend.md` and follow it. The pane gives you the task folder, the worktree, and the path of `test-env.md` (BLACKFILE chunk). Read `handoff.md` in the task folder when it exists (the decisions and what failed before). Read its "Where the branch runs" and "Money path".
+`<skill>` and `<config>` in this file: `<config>` is `$CLAUDE_CONFIG_DIR` when it is set, else `~/.claude` (run `echo ${CLAUDE_CONFIG_DIR:-$HOME/.claude}` one time); `<skill>` is `<config>/skills/dispatch`.
+
+You run the backend checks of one task. Read `<skill>/references/e2e-backend.md` and follow it. The pane gives you the task folder, the worktree, and the path of `test-env.md` (BLACKFILE chunk). Read `handoff.md` in the task folder when it exists (the decisions and what failed before). Read its "Where the branch runs" and "Money path".
 
 - Run each check of `expected.md` exactly as written. Save the full output of each run to `evidence/B<n>.txt` in the task folder.
 - PASS needs output that shows the `Expect` text. Your own words are not evidence.

@@ -18,20 +18,20 @@ Plan when one of these is true, unless the prompt says `--no-plan`:
    - Business library: run `dispatch-knowledge` in the worktree. When it prints a path, read `AGENTS.md` and `INDEX.md` there, and follow the index to the facts of this task (the product, the users, past team decisions, known issues, gaps). Use only what the index points to; never assume a file path inside the library. Cite each fact with its library file. No output: the repo has no library.
 2. Find each fact yourself. A fact is not a question for the user.
 3. Write `plan.md`:
-   - Business brief and Words: first, from `~/.claude/skills/dispatch/templates/brief.md`. Take the facts from the business library, the issue, and the code; put each missing fact under "Unknown" as a question. Never invent a business reason.
+   - Business brief and Words: first, from `<skill>/templates/brief.md`. Take the facts from the business library, the issue, and the code; put each missing fact under "Unknown" as a question. Never invent a business reason.
    - Goal: one paragraph.
    - Changes: the files and functions, the shared builders or helpers to reuse, the migration order, the money-path order.
    - Screens: each screen that changes, and each other screen of the same family.
    - Risks: callers, old rows, two actors at the same time, pause or delete with work in flight.
    - Not in scope.
-4. Write `questions.md` as a design tree: each open decision, what it depends on, and the question in the form of `~/.claude/skills/dispatch/templates/question.md`. Write your recommendation and its reason under each question, apart from the options, so that the pane can show it after the user picks. Each "Unknown" line of the brief is a question too. Mark the frontier: the decisions whose prerequisites are settled.
+4. Write `questions.md` as a design tree: each open decision, what it depends on, and the question in the form of `<skill>/templates/question.md`. Write your recommendation and its reason under each question, apart from the options, so that the pane can show it after the user picks. Each "Unknown" line of the brief is a question too. Mark the frontier: the decisions whose prerequisites are settled.
 
 ## Grill rounds (the pane)
 
 Use the method of the `grilling` skill. Load it with the Skill tool when it is installed.
 
 1. Run `dispatch-step 2 plan --wait "plan questions for <issue key>"`.
-2. Ask the whole frontier in one round with `AskUserQuestion` (max 4 questions in one call; use 2 calls for a bigger frontier). Use the form and the "Pick first" steps of `~/.claude/skills/dispatch/templates/question.md`: no "(Recommended)" label, and the recommendation only after the user's pick.
+2. Ask the whole frontier in one round with `AskUserQuestion` (max 4 questions in one call; use 2 calls for a bigger frontier). Use the form and the "Pick first" steps of `<skill>/templates/question.md`: no "(Recommended)" label, and the recommendation only after the user's pick.
 3. Each answer settles a branch and opens the next frontier. Ask the next round. A question whose answer depends on an open question of this round belongs to a later round.
 4. A question that needs a fact: start a sub-agent to find it, and ask the rest of the frontier now.
 5. Stop when the frontier is empty. Write each answer into `plan.md` and close `questions.md`.

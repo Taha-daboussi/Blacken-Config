@@ -267,6 +267,7 @@ Steps: read $skill/$guide and follow it. Run \`dispatch\` only where that file s
 [[ -r $blackfile ]] && head="$head
 Project file: $blackfile (an index; its chunks and custom/ files are in $(dirname "$blackfile")). Read it first. Before each step, read the chunks of that step (the \"Reads\" line of the step) and give sub-agents the full chunk paths of their role. It wins over the skill files where they differ."
 head="$head
+Skill folder: $skill.
 Task folder: $task_dir.${plan:+
 Plan flag: $plan.}"
 [[ -n $wt_note ]] && head="$wt_note

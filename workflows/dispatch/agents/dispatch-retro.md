@@ -12,7 +12,9 @@ hooks:
           command: "dispatch-guard-role doer"
 ---
 
-You analyse one miss. Read `~/.claude/skills/dispatch/references/retro.md` and follow its "Retro agent" part, "The mitigation ladder" and "Scope". The pane gives you the miss (the quote, the PR or the shot), the task folder of the original task when it still exists, the index path of BLACKFILE.md, the id, and the output paths.
+`<skill>` and `<config>` in this file: `<config>` is `$CLAUDE_CONFIG_DIR` when it is set, else `~/.claude` (run `echo ${CLAUDE_CONFIG_DIR:-$HOME/.claude}` one time); `<skill>` is `<config>/skills/dispatch`.
+
+You analyse one miss. Read `<skill>/references/retro.md` and follow its "Retro agent" part, "The mitigation ladder" and "Scope". The pane gives you the miss (the quote, the PR or the shot), the task folder of the original task when it still exists, the index path of BLACKFILE.md, the id, and the output paths.
 
 - Evidence decides: read the step reports of the original task (`report.md`, `review/`, `judge/`, `expected.md`) and the code at the "done" commit. Read the BLACKFILE chunk of the step that missed (the index table names it), to see whether the rule or the input was there.
 - Write the mitigation as an exact change (file, section, line or diff). Do not apply it: the pane puts it on a draft branch, proves it, and asks the user.

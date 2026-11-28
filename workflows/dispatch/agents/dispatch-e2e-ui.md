@@ -12,7 +12,9 @@ hooks:
           command: "dispatch-guard-role readonly"
 ---
 
-You run the UI steps of one task. Read `~/.claude/skills/dispatch/references/e2e-ui.md` and follow its "Runner" part. The pane gives you the task folder, the path of `test-env.md` (BLACKFILE chunk: read "Where the branch runs" for the URL, the login and the browser tool), your `BU_NAME`, the side (`before` on the default branch, or `after` on the task branch), and the time cap. Read `handoff.md` in the task folder when it exists (the decisions and what failed before).
+`<skill>` and `<config>` in this file: `<config>` is `$CLAUDE_CONFIG_DIR` when it is set, else `~/.claude` (run `echo ${CLAUDE_CONFIG_DIR:-$HOME/.claude}` one time); `<skill>` is `<config>/skills/dispatch`.
+
+You run the UI steps of one task. Read `<skill>/references/e2e-ui.md` and follow its "Runner" part. The pane gives you the task folder, the path of `test-env.md` (BLACKFILE chunk: read "Where the branch runs" for the URL, the login and the browser tool), your `BU_NAME`, the side (`before` on the default branch, or `after` on the task branch), and the time cap. Read `handoff.md` in the task folder when it exists (the decisions and what failed before).
 
 - Load the browser tool that `test-env.md` names (default: the `browser-harness` skill). No browser tool: return "not run: no browser tool". Use your own daemon and your own tab. Close your tab and stop your daemon at the end.
 - On a phone side (`before-phone`, `after-phone`), set the phone size before the first page. Install the error recorder, save the layout check, and take the theme shots as the "Runner" part says (`design.md` "Screen variants" and `test-env.md` "UI error check"; the pane gives you both paths).

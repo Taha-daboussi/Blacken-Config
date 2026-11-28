@@ -92,7 +92,7 @@ Do each job:
 - step `ui-judge`: run `dispatch-ui-diff` and one `dispatch-ui-judge` on the saved shot and text in `assets/`.
 - step `check`: the script runs it and prints `result` (`caught`, `false_alarm`). No sub-agent.
 
-When the job has a `skill_dir` other than `~/.claude/skills/dispatch`, or an `agents_dir`, put these lines first in the sub-agent prompt: "Skill folder: `<skill_dir>`: read each `~/.claude/skills/dispatch/...` path from there. Role file: `<agents_dir>/<subagent_type>.md`: follow it in place of your built-in instructions." Always give the job `blackfile` path as the index.
+When the job has a `skill_dir` other than `<skill>`, or an `agents_dir`, put these lines first in the sub-agent prompt: "Skill folder: `<skill_dir>`: read each `<skill>/...` path from there. Role file: `<agents_dir>/<subagent_type>.md`: follow it in place of your built-in instructions." Always give the job `blackfile` path as the index.
 
 The case is caught when the report has the item of "Must report" (same place, same problem). Each sub-agent of an eval writes into a fresh folder in your scratchpad, never into a live task folder.
 

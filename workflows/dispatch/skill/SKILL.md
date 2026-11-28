@@ -3,6 +3,8 @@ name: dispatch
 description: Sends each task to one new Claude pane in the right herdr tab (UI Bugs, BE Bugs, UI Features, BE Features, Own Review, Teammate Review, Monitors, Setup) of the current space, with its own git worktree. That pane runs the whole pipeline with role sub-agents (plan, expected result, build, simplify, review, e2e, PR, manual test, done) and learns from review misses. On by default: use it for every task the user gives in a herdr session that dispatch did not start (an issue link, a PR link, review comments, an error, a feature request, a "watch the logs / run this at 3pm" job), with or without /dispatch.
 ---
 
+`<skill>` and `<config>` in the dispatch files: `<config>` is `$CLAUDE_CONFIG_DIR` when it is set, else `~/.claude`; `<skill>` is `<config>/skills/dispatch` (the pane prompt names it as "Skill folder"). Give sub-agents full paths.
+
 # Dispatch
 
 You are the dispatcher. You pick the task type, start one pane for it with the `dispatch` script, report where it went, and stay free for the next task. Never do the task yourself.
@@ -13,7 +15,7 @@ Check where you run: `hc get "$HC_TERMINAL_ID" | jq -r '.labels.where'` prints `
 
 ## The pipeline in one pane
 
-Each bug, feature, review, or feedback task runs in one pane, from intake to done. The pane is the orchestrator. Sub-agents with fixed models do each role (`~/.claude/agents/dispatch-*.md`). UI and UX changes are built with Sonnet; logic (money, data, jobs) with Opus. The footer (the Claude status line) shows the step, for example `dispatch 6/10 review`, and `⏳` when the pane waits for the user, who also gets one ping. The pane steps are in `references/pipeline.md`.
+Each bug, feature, review, or feedback task runs in one pane, from intake to done. The pane is the orchestrator. Sub-agents with fixed models do each role (`<config>/agents/dispatch-*.md`). UI and UX changes are built with Sonnet; logic (money, data, jobs) with Opus. The footer (the Claude status line) shows the step, for example `dispatch 6/10 review`, and `⏳` when the pane waits for the user, who also gets one ping. The pane steps are in `references/pipeline.md`.
 
 ```
 1 intake -> 2 plan + grill (size rules) -> 3 expected (before code) -> 4 build -> 5 simplify, gate, tests
@@ -26,7 +28,7 @@ Each bug, feature, review, or feedback task runs in one pane, from intake to don
 The project facts live in a private file: `~/.config/dispatch/<name>/BLACKFILE.md`. `dispatch-context --path` prints the path for the current repo: it matches every git remote (origin, upstream, the others; ssh aliases resolved) against the `Remote:` lines of each BLACKFILE. The folder name of the main checkout counts only when the repo has no remote. A global SessionStart hook (`dispatch-context`) loads the file into every session of that repo, also outside dispatch. It wins over the skill files where they differ (names, gate, tests, envs, money path, design sources, team review tool, review rules, issue states, boards, posts, merge).
 
 - Read it before each dispatch. The `dispatch` script puts its path in each pane prompt.
-- No BLACKFILE.md for this repo: run `dispatch --type init --name init --no-worktree` with the prompt "Set up BLACKFILE.md: read ~/.claude/skills/dispatch/references/init.md and follow it." Dispatch no other task of that repo until the file exists.
+- No BLACKFILE.md for this repo: run `dispatch --type init --name init --no-worktree` with the prompt "Set up BLACKFILE.md: read <skill>/references/init.md and follow it." Dispatch no other task of that repo until the file exists.
 - It is a system of chunks: `BLACKFILE.md` is a small index (the remote, the main checkout, the "Always" rules, and the chunk table), loaded in every session. The details are in the chunks next to it, with the same names in every repo: `issues.md`, `build.md`, `test-env.md`, `design.md`, `review.md`, `ship.md`. Read a chunk only before the work in its row. Niche jobs of one repo only (team posts in a chat app, a special test bot, a staging server) live in `custom/<job>.md`, listed in the index "Custom" table; the standard chunk keeps one line that points there. "BLACKFILE.md 'Tests'" means the section `## Tests` in the chunk that the table lists for it. Each step of `references/pipeline.md` names the chunks it reads, and the role table names the chunks of each sub-agent. A missing section or `none` uses the defaults of `references/pipeline.md`.
 - Templates: `templates/blackfile/`. The learn files sit next to the index: `misses.md`, `misses/`, `evals/`.
 
