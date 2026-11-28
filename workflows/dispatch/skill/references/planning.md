@@ -15,6 +15,7 @@ Plan when one of these is true, unless the prompt says `--no-plan`:
 ## Planner (sub-agent `dispatch-planner`)
 
 1. Read `task.md`, BLACKFILE.md, the issue and its comments, the spec and its images, the misses of the area, and the code that the task touches: each caller of each function that will change, and each screen of the same family.
+   - Business library: run `dispatch-knowledge` in the worktree. When it prints a path, read `AGENTS.md` and `INDEX.md` there, and follow the index to the facts of this task (the product, the users, past team decisions, known issues, gaps). Use only what the index points to; never assume a file path inside the library. Cite each fact with its library file. No output: the repo has no library.
 2. Find each fact yourself. A fact is not a question for the user.
 3. Write `plan.md`:
    - Goal: one paragraph.

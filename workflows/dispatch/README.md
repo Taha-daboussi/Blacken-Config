@@ -58,6 +58,7 @@ The "Models" section of the `BLACKFILE` of a project can override these values. 
   - `dispatch-guard-role`: the hook of each sub-agent: no push, no GitHub, Linear or chat write; read-only roles cannot change the worktree
   - `dispatch-wt-check`: proves that a read-only sub-agent left the worktree as it was
   - `dispatch-ui-diff`: compares the expected screen with the DOM text of a shot, plus a pixel diff
+  - `dispatch-knowledge`: prints the local path of the business library that the BLACKFILE `Knowledge:` line names; clones it to `~/knowledge/<repo>` when missing, pulls it when present, and checks its entry files (`INDEX.md`, `AGENTS.md`, `HOW-TO-UPDATE.md`)
   - `dispatch-count`: counts the working panes of a space and reads the limit (see "Limit of working panes")
   - `dispatch-queue`: lists, starts and drops the tasks that `dispatch` held back at the limit
   - `dispatch-pr-overlap`: lists the other open PRs whose added lines use a function that this branch changed (step 8, no model)

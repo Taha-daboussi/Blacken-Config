@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat >&2 <<'U'
+dispatch-knowledge: print the local path of the business library of the repo in a folder.
+
+  dispatch-knowledge            for the current folder
+  dispatch-knowledge -C <dir>   for <dir>
+  dispatch-knowledge --no-pull  do not pull an existing copy
+
+The library is named in the BLACKFILE index, section "Project":
+  - Knowledge: `github.com/<owner>/<repo>`   (or `none`)
+The local copy is $DISPATCH_KNOWLEDGE_DIR/<repo> (default ~/knowledge/<repo>). It can be a link to another
+checkout. A missing copy is cloned; an existing copy is pulled (fast-forward only).
+Every library has three entry files at its root: INDEX.md, AGENTS.md, HOW-TO-UPDATE.md.
+
+Output: the path, and nothing else. No BLACKFILE, no Knowledge line, or `none`: no output, exit 0.
+Exit 1: the clone failed, or an entry file is missing.
+U
+  exit 2
+}
+die() { echo "dispatch-knowledge: $*" >&2; exit 1; }
+
+dir=. pull=1
+while (($#)); do
+  case $1 in
+    -C) (($# >= 2)) || usage; dir=$2; shift 2 ;;
+    --no-pull) pull=0; shift ;;
+    -h|--help) usage ;;
+    *) usage ;;
+  esac
+done
+
+command -v dispatch-context >/dev/null || die "dispatch-context is not on PATH (run install.sh)"
+blackfile=$(dispatch-context --path -C "$dir" 2>/dev/null) || exit 0
+line=$(grep -m1 -E '^[[:space:]]*-[[:space:]]*Knowledge:' "$blackfile" || true)
+[[ -n $line ]] || exit 0
+value=$(sed -nE 's/.*Knowledge:[[:space:]]*`([^`]+)`.*/\1/p' <<<"$line")
+[[ -n $value ]] || value=$(sed -E 's/.*Knowledge:[[:space:]]*([^[:space:]]+).*/\1/' <<<"$line")
+[[ ${value,,} == none ]] && exit 0
+
+value=${value%.git}
+value=${value#https://}
+value=${value#http://}
+name=${value##*/}
+[[ $value == */*/* && -n $name ]] || die "the Knowledge line in $blackfile is not <host>/<owner>/<repo>: $value"
+
+root=${DISPATCH_KNOWLEDGE_DIR:-$HOME/knowledge}
+path=$root/$name
+
+if [[ ! -e $path ]]; then
+  mkdir -p "$root"
+  git clone -q "https://$value.git" "$path" >&2 || die "git clone https://$value.git failed"
+elif ((pull)); then
+  if [[ -n $(git -C "$path" status --porcelain --untracked-files=no) ]]; then
+    echo "dispatch-knowledge: $path has local changes; not pulled, using the local copy" >&2
+  elif ! out=$(git -C "$path" pull -q --ff-only 2>&1); then
+    echo "dispatch-knowledge: pull in $path failed, using the local copy: $out" >&2
+  fi
+fi
+
+path=$(cd "$path" && pwd -P)
+missing=()
+for f in INDEX.md AGENTS.md HOW-TO-UPDATE.md; do
+  [[ -f $path/$f ]] || missing+=("$f")
+done
+((${#missing[@]} == 0)) || die "$path has no ${missing[*]} (every library needs INDEX.md, AGENTS.md and HOW-TO-UPDATE.md)"
+
+echo "$path"

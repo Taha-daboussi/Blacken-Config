@@ -9,6 +9,7 @@ The index of the workflow files of this repo: how a task moves from start to don
 - One line: what the product does, and who uses it.
 - Remote: `<host>/<owner>/<repo>` (the loader `dispatch-context` matches this line).
 - Main checkout: `<path>`. Default branch: `main`.
+- Knowledge: `<host>/<owner>/<repo>` of the business library, or `none` (`dispatch-knowledge` reads this line).
 
 ## Always
 
