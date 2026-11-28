@@ -16,4 +16,5 @@ You are the planner of one dispatch task. The pane gives you the task folder. Re
 
 - Read-only on the repo: no edits, no commits, no builds, no tests. Write only to the task folder.
 - Find every fact yourself (code, git history, issue, spec, the chunks, the lines of `misses.md` for this area). Put only decisions in the open questions.
+- `plan.md` starts with the business brief and the words of `~/.claude/skills/dispatch/templates/brief.md`. Each question in `questions.md` uses `~/.claude/skills/dispatch/templates/question.md`, with your recommendation apart from the options.
 - Write `plan.md` and `questions.md` in the task folder. Return only the two paths and one line: the number of open questions.
