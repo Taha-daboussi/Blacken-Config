@@ -209,14 +209,22 @@ def where(v, out, base):
     shoot(page(WHERE_CSS, f'{head(v, "WHERE WE CHANGE")}<div class="row">{cols}</div><div class="notes">{notes}</div>'), out, 1600)
 
 
+def fetch(url, dest):
+    part = dest.with_name(dest.name + ".part")
+    try:
+        urllib.request.urlretrieve(url, part)
+    except OSError as e:
+        part.unlink(missing_ok=True)
+        die(f"cannot download {url}: {e}. Check the network, or set DISPATCH_VOICE to a local .onnx voice")
+    part.rename(dest)
+
+
 def voice_file():
     p = Path(os.environ.get("DISPATCH_VOICE", Path.home() / ".local/share/dispatch/voices/en_US-ryan-high.onnx"))
-    if not p.is_file():
-        p.parent.mkdir(parents=True, exist_ok=True)
-        for suffix in ("", ".json"):
-            urllib.request.urlretrieve(VOICE_URL + suffix, str(p) + suffix)
-    if not Path(str(p) + ".json").is_file():
-        urllib.request.urlretrieve(VOICE_URL + ".json", str(p) + ".json")
+    p.parent.mkdir(parents=True, exist_ok=True)
+    for f in (p, Path(str(p) + ".json")):
+        if not f.is_file():
+            fetch(VOICE_URL + f.name[len(p.name):], f)
     return p
 
 
