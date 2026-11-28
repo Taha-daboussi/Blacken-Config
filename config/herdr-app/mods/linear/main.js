@@ -1,8 +1,6 @@
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { spaces, agents, terminals, focused, theme, shared, setShared, readTextFile, home, hc, run, notify, openOverlay, closeOverlay, props, checking, exec } from "herdr";
-import * as PROBEFS from "fs/promises";
-const PROBEID = Math.random().toString(36).slice(2, 7); let PROBELOG = ""; const PROBE = (m) => { PROBELOG += `${Date.now()} ${m}\n`; PROBEFS.writeFile(`${home()}/.config/herdr-app/data/linear-probe-${PROBEID}.log`, PROBELOG); };
 
 const WORKSPACES = [
   { id: "dwn", label: "Dawn", match: /dawn/i },
@@ -154,7 +152,7 @@ class IssueMenu {
   row(t, id, icon, iconColor, label, selected, onClick) {
     return h_flex().id(id).h(28).px(8).gap(9).flex_none().rounded(7).items_center().cursor_pointer()
       .text_color(t.foreground).hover((s) => s.bg(t.hover))
-      .on_click((_e, cx) => { PROBE(`menu-click ${id}`); if (id === "copy") { closeOverlay(props().overlay); return; } onClick(cx); })
+      .on_click((_e, cx) => onClick(cx))
       .child(svg(icon).size(14).flex_none().text_color(iconColor ?? t.muted))
       .child(div().flex_1().min_w(0).truncate().child(label))
       .when(selected, (el) => el.child(svg("mods/workspace-chrome/check.svg").size(13).flex_none().text_color(t.muted)));
@@ -333,8 +331,8 @@ export default class Linear extends View {
     const badge = this.stepBadge(t, issue, busy);
     return h_flex().id(`is-${issue.id}`).h(30).px(8).gap(8).flex_none().items_center().rounded(7).cursor_pointer()
       .hover((s) => s.bg(t.hover))
-      .on_click((_e, cx) => PROBE(`row-click ${issue.identifier}`))
-      .on_mouse_down("right", (_e, cx) => { PROBE(`row-right ${issue.identifier}`); cx.stop_propagation(); this.openMenu(ws, issue); })
+      .on_click((_e, cx) => cx.open_url(issue.url))
+      .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); this.openMenu(ws, issue); })
       .child(h_flex().id(`pr-${issue.id}`).flex_none().tooltip(PRIORITIES.find(([n]) => n === issue.priority)?.[1] ?? "")
         .child(svg(priorityIcon(issue.priority)).size(13).text_color(issue.priority === 1 ? "#f2994a" : t.muted)))
       .child(div().flex_none().w(62).truncate().text_size(11.5).text_color(t.dim).child(issue.identifier))
