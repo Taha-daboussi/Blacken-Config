@@ -18,8 +18,20 @@ USAGE = """dispatch-visual: make the plan and done visuals of a dispatch task fr
   dispatch-visual video    <visual.json> <out.mp4>   the 6-part video with voice and subtitles
   dispatch-visual all      <visual.json> <out dir>   each part that the JSON has
 The JSON form is in templates/visual.md of the dispatch skill.
-Needs: chromium or google-chrome, ffmpeg, ffprobe; for the video also piper (or uvx).
-Env: DISPATCH_PIPER (the piper-tts command; default uvx --from piper-tts piper), DISPATCH_VOICE (an .onnx piper voice; default ~/.local/share/dispatch/voices/en_US-ryan-high.onnx, fetched when missing)."""
+Needs: chromium or google-chrome, ffmpeg, ffprobe; for the video also uv (it runs piper-tts).
+Env: DISPATCH_VOICE (an .onnx piper voice; default ~/.local/share/dispatch/voices/en_US-ryan-high.onnx, fetched when missing)."""
+
+TTS_CODE = """
+import json, sys, wave
+from piper import PiperVoice, SynthesisConfig
+voice = PiperVoice.load(sys.argv[1])
+cfg = SynthesisConfig(length_scale=1.12)
+for text, path in json.load(sys.stdin):
+    with wave.open(path, "wb") as wf:
+        voice.synthesize_wav(text, wf, syn_config=cfg)
+"""
+
+PROFILE = None
 
 VOICE_URL = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ryan/high/en_US-ryan-high.onnx"
 
@@ -112,19 +124,26 @@ def run(cmd, **kw):
     return r
 
 
+def chrome(*args):
+    global PROFILE
+    if PROFILE is None:
+        PROFILE = tempfile.TemporaryDirectory(prefix="dispatch-visual-chrome-")
+    return run([browser(), "--headless=new", "--disable-gpu", "--hide-scrollbars", "--no-first-run", f"--user-data-dir={PROFILE.name}", *args])
+
+
 def shoot(doc, out, width, height=None):
     with tempfile.TemporaryDirectory() as td:
         src = Path(td) / "p.html"
         if height is None:
             src.write_text(doc.replace("</body>", '<script>addEventListener("load",()=>document.body.setAttribute("data-h",document.documentElement.scrollHeight))</script></body>'))
-            dom = run([browser(), "--headless=new", "--disable-gpu", "--hide-scrollbars", f"--window-size={width},1000", "--virtual-time-budget=3000", "--dump-dom", src.as_uri()]).stdout.decode()
+            dom = chrome(f"--window-size={width},1000", "--virtual-time-budget=3000", "--dump-dom", src.as_uri()).stdout.decode()
             m = re.search(r'data-h="(\d+)"', dom)
             if not m:
                 die("could not measure the page height")
             height = int(m.group(1))
         else:
             src.write_text(doc)
-        run([browser(), "--headless=new", "--disable-gpu", "--hide-scrollbars", f"--window-size={width},{height}", "--virtual-time-budget=3000", f"--screenshot={Path(out).resolve()}", src.as_uri()])
+        chrome(f"--window-size={width},{height}", "--virtual-time-budget=3000", f"--screenshot={Path(out).resolve()}", src.as_uri())
     return height
 
 
@@ -228,12 +247,10 @@ def voice_file():
     return p
 
 
-def piper_cmd():
-    if os.environ.get("DISPATCH_PIPER"):
-        return os.environ["DISPATCH_PIPER"].split()
-    if shutil.which("uvx"):
-        return ["uvx", "--from", "piper-tts", "piper"]
-    die("no piper-tts: install uv (uvx), or set DISPATCH_PIPER to a piper-tts command")
+def speak(jobs, voice):
+    if not shutil.which("uv"):
+        die("no uv on PATH: the video needs uv to run piper-tts")
+    run(["uv", "run", "-q", "--no-project", "--with", "piper-tts", "python", "-c", TTS_CODE, str(voice)], input=json.dumps(jobs).encode())
 
 
 def duration(p):
@@ -242,17 +259,17 @@ def duration(p):
 
 def video(v, out):
     slides = need(v, "video")
-    voice, piper = voice_file(), piper_cmd()
+    voice = voice_file()
     with tempfile.TemporaryDirectory() as td:
         td = Path(td)
+        parts = [[x.strip() for x in re.split(r"(?<=[.?!])\s+", need(s, "say")) if x.strip()] for s in slides]
+        speak([[sent, str(td / f"c{k}.wav")] for k, sent in enumerate((x for p in parts for x in p), 1)], voice)
         segs, k, n = [], 0, len(slides)
-        for i, s in enumerate(slides, 1):
-            sents = [x.strip() for x in re.split(r"(?<=[.?!])\s+", need(s, "say")) if x.strip()]
+        for i, (s, sents) in enumerate(zip(slides, parts), 1):
             lines = "".join(f'<div class="ln">{fmt(x)}</div>' for x in s.get("lines", []))
             for j, sent in enumerate(sents):
                 k += 1
                 wav, png, mp4 = td / f"c{k}.wav", td / f"c{k}.png", td / f"c{k}.mp4"
-                run([*piper, "-m", str(voice), "--length-scale", "1.12", "-f", str(wav)], input=sent.encode())
                 body = (f'<div class="main"><div class="step">{fmt(s.get("part", ""))}</div><h1>{fmt(s.get("title", ""))}</h1>{lines}</div>'
                         f'<div class="sub"><div class="prog" style="width:{i * 100 // n}%"></div>{html.escape(sent)}</div>')
                 shoot(page(VIDEO_CSS, body), png, 1920, 1080)

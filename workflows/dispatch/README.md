@@ -60,7 +60,7 @@ The "Models" section of the `BLACKFILE` of a project can override these values. 
   - `dispatch-wt-check`: proves that a read-only sub-agent left the worktree as it was
   - `dispatch-ui-diff`: compares the expected screen with the DOM text of a shot, plus a pixel diff
   - `dispatch-knowledge`: prints the local path of the business library that the BLACKFILE `Knowledge:` line names; clones it to `~/knowledge/<repo>` when missing, pulls it when present, and checks its entry files (`INDEX.md`, `AGENTS.md`, `HOW-TO-UPDATE.md`)
-- `dispatch-visual`: makes the plan and done pack of a task from `visual.json`: the card and the appendix (images), the "where we change" image of a UI change, and the 6-part video with voice (`templates/visual.md`, `references/visuals.md`). Needs chromium or google-chrome, ffmpeg, and uv (`uvx`) for the piper-tts voice. `claude-tg -f` sends the files.
+- `dispatch-visual`: makes the plan and done pack of a task from `visual.json`: the card and the appendix (images), the "where we change" image of a UI change, and the 6-part video with voice (`templates/visual.md`, `references/visuals.md`). Needs chromium or google-chrome, ffmpeg, and uv for the piper-tts voice. `claude-tg -f` sends the files.
   - `dispatch-count`: counts the working panes of a space and reads the limit (see "Limit of working panes")
   - `dispatch-queue`: lists, starts and drops the tasks that `dispatch` held back at the limit
   - `dispatch-pr-overlap`: lists the other open PRs whose added lines use a function that this branch changed (step 8, no model)
