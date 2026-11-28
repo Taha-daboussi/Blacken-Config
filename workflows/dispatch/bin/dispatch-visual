@@ -1,0 +1,299 @@
+#!/usr/bin/env python3
+import argparse
+import html
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import urllib.request
+from pathlib import Path
+
+USAGE = """dispatch-visual: make the plan and done visuals of a dispatch task from one JSON file.
+  dispatch-visual card     <visual.json> <out.png>   key facts, one image
+  dispatch-visual appendix <visual.json> <out.png>   words, decisions, risks, not doing, sources: one long image
+  dispatch-visual where    <visual.json> <out.png>   UI tasks: today screenshot with numbered boxes, the after picture, notes
+  dispatch-visual video    <visual.json> <out.mp4>   the 6-part video with voice and subtitles
+  dispatch-visual all      <visual.json> <out dir>   each part that the JSON has
+The JSON form is in templates/visual.md of the dispatch skill.
+Needs: chromium or google-chrome, ffmpeg, ffprobe; for the video also piper (or uvx).
+Env: DISPATCH_PIPER (the piper-tts command; default uvx --from piper-tts piper), DISPATCH_VOICE (an .onnx piper voice; default ~/.local/share/dispatch/voices/en_US-ryan-high.onnx, fetched when missing)."""
+
+VOICE_URL = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ryan/high/en_US-ryan-high.onnx"
+
+BASE_CSS = """
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0f1419;color:#e6e9ef;font-family:"Inter","DejaVu Sans",sans-serif}
+.w{color:#8fb4ff;font-weight:800}
+.good{color:#5fe39a}.warn{color:#ffb85c}.bad{color:#ff7b7b}.muted{color:#8b96a8}
+"""
+
+CARD_CSS = """
+body{width:1080px;padding:36px;font-size:22px;line-height:1.35}
+.top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:22px;gap:20px}
+.key{color:#8b96a8;font-size:20px;letter-spacing:1px}
+h1{font-size:40px;line-height:1.15;margin-top:4px}
+.badges{display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+.b{padding:6px 14px;border-radius:999px;font-size:18px;font-weight:700;white-space:nowrap;background:#1e2a44;color:#8fb4ff}
+.b.yes{background:#3d1717;color:#ff7b7b}.b.no{background:#173d2a;color:#5fe39a}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.box{background:#161d26;border:1px solid #243041;border-radius:14px;padding:18px 20px}
+.full{grid-column:1/3}
+.lab{font-size:15px;font-weight:800;letter-spacing:1.5px;color:#8b96a8;margin-bottom:8px}
+.num{display:flex;align-items:baseline;gap:12px;margin:6px 0;flex-wrap:wrap}
+.num .l{color:#c3cad6;min-width:260px}.num .v{font-size:34px;font-weight:800}
+li{margin:4px 0 4px 22px}
+"""
+
+APPX_CSS = """
+body{width:1080px;padding:40px;font-size:24px;line-height:1.45}
+.key{color:#8b96a8;font-size:20px;letter-spacing:1px}
+h1{font-size:38px;line-height:1.15;margin:4px 0 26px}
+h2{font-size:18px;font-weight:800;letter-spacing:2px;color:#ffb85c;margin:30px 0 12px}
+.item{background:#161d26;border:1px solid #243041;border-radius:12px;padding:14px 18px;margin:10px 0}
+.item b{color:#8fb4ff}
+.ex{margin-top:6px;color:#c3cad6;border-left:4px solid #ffb85c;padding-left:12px;font-size:21px}
+"""
+
+WHERE_CSS = """
+body{width:1600px;padding:36px;font-size:24px;line-height:1.4}
+.key{color:#8b96a8;font-size:20px;letter-spacing:1px}
+h1{font-size:36px;margin:4px 0 22px}
+.row{display:flex;gap:28px;align-items:flex-start}
+.col{flex:1}
+.cap{font-size:18px;font-weight:800;letter-spacing:2px;color:#ffb85c;margin-bottom:10px}
+.shot{position:relative;width:100%}
+.shot img{width:100%;display:block;border-radius:10px;border:1px solid #243041}
+.bx{position:absolute;border:4px solid #ff3b3b;border-radius:6px}
+.bx span{position:absolute;top:-18px;left:-18px;width:36px;height:36px;border-radius:50%;background:#ff3b3b;color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;font-size:20px}
+.notes{margin-top:24px}
+.note{display:flex;gap:14px;margin:8px 0;align-items:flex-start}
+.note span{flex:none;width:34px;height:34px;border-radius:50%;background:#ff3b3b;color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;font-size:18px}
+"""
+
+VIDEO_CSS = """
+body{width:1920px;height:1080px;font-size:34px;line-height:1.4;display:flex;flex-direction:column}
+.main{flex:1;padding:80px 110px 30px;display:flex;flex-direction:column;justify-content:center}
+.step{color:#ffb85c;font-size:26px;font-weight:800;letter-spacing:3px;margin-bottom:18px}
+h1{font-size:72px;line-height:1.1;margin-bottom:34px}
+.ln{font-size:42px;margin:10px 0;max-width:1700px}
+.sub{position:relative;background:#0a0d11;border-top:2px solid #243041;padding:26px 110px;font-size:36px;line-height:1.35;color:#fff;min-height:170px;display:flex;align-items:center}
+.prog{position:absolute;top:0;left:0;height:6px;background:#ffb85c}
+"""
+
+
+def die(msg):
+    print(f"dispatch-visual: {msg}", file=sys.stderr)
+    sys.exit(1)
+
+
+def fmt(text):
+    t = html.escape(str(text))
+    return re.sub(r"\*\*(.+?)\*\*", r'<span class="w">\1</span>', t)
+
+
+def page(css, body):
+    return f'<!doctype html><html><head><meta charset="utf-8"><style>{BASE_CSS}{css}</style></head><body>{body}</body></html>'
+
+
+def browser():
+    for b in ("chromium", "chromium-browser", "google-chrome-stable", "google-chrome"):
+        if shutil.which(b):
+            return b
+    die("no chromium or google-chrome on PATH")
+
+
+def run(cmd, **kw):
+    r = subprocess.run(cmd, capture_output=True, **kw)
+    if r.returncode:
+        die(f"{cmd[0]} failed: {r.stderr.decode(errors='replace')[-600:]}")
+    return r
+
+
+def shoot(doc, out, width, height=None):
+    with tempfile.TemporaryDirectory() as td:
+        src = Path(td) / "p.html"
+        if height is None:
+            src.write_text(doc.replace("</body>", '<script>addEventListener("load",()=>document.body.setAttribute("data-h",document.documentElement.scrollHeight))</script></body>'))
+            dom = run([browser(), "--headless=new", "--disable-gpu", "--hide-scrollbars", f"--window-size={width},1000", "--virtual-time-budget=3000", "--dump-dom", src.as_uri()]).stdout.decode()
+            m = re.search(r'data-h="(\d+)"', dom)
+            if not m:
+                die("could not measure the page height")
+            height = int(m.group(1))
+        else:
+            src.write_text(doc)
+        run([browser(), "--headless=new", "--disable-gpu", "--hide-scrollbars", f"--window-size={width},{height}", "--virtual-time-budget=3000", f"--screenshot={Path(out).resolve()}", src.as_uri()])
+    return height
+
+
+def need(v, key):
+    if not v.get(key):
+        die(f'the JSON has no "{key}"')
+    return v[key]
+
+
+def head(v, label):
+    return f'<div class="key">{fmt(v.get("key", ""))} · {fmt(label)}</div><h1>{fmt(need(v, "title"))}</h1>'
+
+
+def card(v, out):
+    c = need(v, "card")
+    money = str(c.get("money", "")).lower()
+    badges = [f'<div class="b">{fmt(v.get("phase", "plan").upper())}</div>']
+    if money:
+        badges.append(f'<div class="b {"yes" if money.startswith("yes") else "no"}">MONEY: {fmt(c["money"])}</div>')
+    if c.get("undo"):
+        badges.append(f'<div class="b">UNDO: {fmt(c["undo"])}</div>')
+    boxes = []
+    for k, lab in (("problem", "PROBLEM"), ("fix", "FIX"), ("result", "RESULT"), ("risk", "RISK")):
+        if c.get(k):
+            boxes.append(f'<div class="box"><div class="lab">{lab}</div>{fmt(c[k])}</div>')
+    if c.get("numbers"):
+        rows = "".join(
+            f'<div class="num"><span class="l">{fmt(n["label"])}</span><span class="v muted">{fmt(n.get("before", ""))}</span>'
+            f'<span class="muted">→</span><span class="v good">{fmt(n.get("after", ""))}</span><span class="muted">{fmt(n.get("note", ""))}</span></div>'
+            for n in c["numbers"])
+        boxes.append(f'<div class="box full"><div class="lab">NUMBERS</div>{rows}</div>')
+    if v.get("open_decisions"):
+        items = "".join(f"<li>{fmt(d['question'])}</li>" for d in v["open_decisions"])
+        boxes.append(f'<div class="box full"><div class="lab">YOUR DECISIONS</div><ul>{items}</ul></div>')
+    body = (f'<div class="top"><div>{head(v, "PLAN CARD" if v.get("phase", "plan") == "plan" else "DONE CARD")}</div>'
+            f'<div class="badges">{"".join(badges)}</div></div><div class="grid">{"".join(boxes)}</div>')
+    shoot(page(CARD_CSS, body), out, 1080)
+
+
+def appendix(v, out):
+    parts = [head(v, "APPENDIX: ALL DETAILS")]
+    if v.get("words"):
+        parts.append("<h2>WORDS</h2>" + "".join(
+            f'<div class="item"><b>{fmt(w["word"])}</b>: {fmt(w["meaning"])}'
+            + (f'<div class="ex">Example: {fmt(w["example"])}</div>' if w.get("example") else "") + "</div>"
+            for w in v["words"]))
+    if v.get("decisions_taken"):
+        parts.append("<h2>DECISIONS TAKEN</h2>" + "".join(
+            f'<div class="item">{fmt(d["decision"])}<div class="ex">Why: {fmt(d["why"])}</div></div>' for d in v["decisions_taken"]))
+    if v.get("open_decisions"):
+        parts.append("<h2>YOUR DECISIONS</h2>" + "".join(
+            f'<div class="item">{fmt(d["question"])}' + "".join(f'<div class="ex">{fmt(o)}</div>' for o in d.get("options", [])) + "</div>"
+            for d in v["open_decisions"]))
+    for key, lab in (("risks", "RISKS"), ("not_doing", "NOT DOING"), ("sources", "SOURCES")):
+        if v.get(key):
+            parts.append(f"<h2>{lab}</h2>" + "".join(f'<div class="item">{fmt(x)}</div>' for x in v[key]))
+    shoot(page(APPX_CSS, "".join(parts)), out, 1080)
+
+
+def img_size(path):
+    r = run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0", str(path)])
+    w, h = r.stdout.decode().strip().split(",")[:2]
+    return int(w), int(h)
+
+
+def where(v, out, base):
+    wv = need(v, "where")
+    today = (base / need(wv, "today")).resolve()
+    if not today.is_file():
+        die(f"no today screenshot: {today}")
+    tw, th = img_size(today)
+    boxes = "".join(
+        f'<div class="bx" style="left:{b["x"] * 100 / tw:.3f}%;top:{b["y"] * 100 / th:.3f}%;width:{b["w"] * 100 / tw:.3f}%;height:{b["h"] * 100 / th:.3f}%"><span>{b["n"]}</span></div>'
+        for b in wv.get("boxes", []))
+    cols = f'<div class="col"><div class="cap">TODAY</div><div class="shot"><img src="{today.as_uri()}">{boxes}</div></div>'
+    if wv.get("after"):
+        after = (base / wv["after"]).resolve()
+        if not after.is_file():
+            die(f"no after picture: {after}")
+        cols += f'<div class="col"><div class="cap">AFTER</div><div class="shot"><img src="{after.as_uri()}"></div></div>'
+    notes = "".join(f'<div class="note"><span>{b["n"]}</span><div>{fmt(b["note"])}</div></div>' for b in wv.get("boxes", []))
+    shoot(page(WHERE_CSS, f'{head(v, "WHERE WE CHANGE")}<div class="row">{cols}</div><div class="notes">{notes}</div>'), out, 1600)
+
+
+def voice_file():
+    p = Path(os.environ.get("DISPATCH_VOICE", Path.home() / ".local/share/dispatch/voices/en_US-ryan-high.onnx"))
+    if not p.is_file():
+        p.parent.mkdir(parents=True, exist_ok=True)
+        for suffix in ("", ".json"):
+            urllib.request.urlretrieve(VOICE_URL + suffix, str(p) + suffix)
+    if not Path(str(p) + ".json").is_file():
+        urllib.request.urlretrieve(VOICE_URL + ".json", str(p) + ".json")
+    return p
+
+
+def piper_cmd():
+    if os.environ.get("DISPATCH_PIPER"):
+        return os.environ["DISPATCH_PIPER"].split()
+    if shutil.which("uvx"):
+        return ["uvx", "--from", "piper-tts", "piper"]
+    die("no piper-tts: install uv (uvx), or set DISPATCH_PIPER to a piper-tts command")
+
+
+def duration(p):
+    return float(run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(p)]).stdout.decode().strip())
+
+
+def video(v, out):
+    slides = need(v, "video")
+    voice, piper = voice_file(), piper_cmd()
+    with tempfile.TemporaryDirectory() as td:
+        td = Path(td)
+        segs, k, n = [], 0, len(slides)
+        for i, s in enumerate(slides, 1):
+            sents = [x.strip() for x in re.split(r"(?<=[.?!])\s+", need(s, "say")) if x.strip()]
+            lines = "".join(f'<div class="ln">{fmt(x)}</div>' for x in s.get("lines", []))
+            for j, sent in enumerate(sents):
+                k += 1
+                wav, png, mp4 = td / f"c{k}.wav", td / f"c{k}.png", td / f"c{k}.mp4"
+                run([*piper, "-m", str(voice), "--length-scale", "1.12", "-f", str(wav)], input=sent.encode())
+                body = (f'<div class="main"><div class="step">{fmt(s.get("part", ""))}</div><h1>{fmt(s.get("title", ""))}</h1>{lines}</div>'
+                        f'<div class="sub"><div class="prog" style="width:{i * 100 // n}%"></div>{html.escape(sent)}</div>')
+                shoot(page(VIDEO_CSS, body), png, 1920, 1080)
+                pad = 0.9 if j == len(sents) - 1 else 0.35
+                vf = ["-vf", "fade=t=in:st=0:d=0.3"] if j == 0 else []
+                run(["ffmpeg", "-y", "-v", "error", "-loop", "1", "-i", str(png), "-i", str(wav), "-af", f"apad=pad_dur={pad}",
+                     "-t", f"{duration(wav) + pad:.2f}", "-r", "30", "-c:v", "libx264", "-tune", "stillimage", "-pix_fmt", "yuv420p", *vf,
+                     "-c:a", "aac", "-b:a", "128k", "-ar", "44100", str(mp4)])
+                segs.append(mp4)
+            print(f"dispatch-visual: video part {i}/{n} done", file=sys.stderr)
+        lst = td / "list.txt"
+        lst.write_text("".join(f"file '{p}'\n" for p in segs))
+        run(["ffmpeg", "-y", "-v", "error", "-f", "concat", "-safe", "0", "-i", str(lst), "-c", "copy", "-movflags", "+faststart", str(Path(out).resolve())])
+    secs = duration(out)
+    if secs > 180:
+        print(f"dispatch-visual: the video is {secs:.0f} s, over the 3-minute limit: cut the text", file=sys.stderr)
+        sys.exit(1)
+
+
+def main():
+    if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
+        print(USAGE, file=sys.stderr)
+        sys.exit(2)
+    ap = argparse.ArgumentParser(usage=USAGE)
+    ap.add_argument("what", choices=["card", "appendix", "where", "video", "all"])
+    ap.add_argument("json")
+    ap.add_argument("out")
+    a = ap.parse_args()
+    src = Path(a.json).resolve()
+    try:
+        v = json.loads(src.read_text())
+    except (OSError, ValueError) as e:
+        die(f"cannot read {src}: {e}")
+    base = src.parent
+    if a.what == "all":
+        od = Path(a.out)
+        od.mkdir(parents=True, exist_ok=True)
+        done = []
+        for name, fn, ext, key in (("card", card, "png", "card"), ("appendix", appendix, "png", "words"), ("where", None, "png", "where"), ("video", video, "mp4", "video")):
+            if v.get(key):
+                p = od / f"{name}.{ext}"
+                where(v, p, base) if name == "where" else fn(v, p)
+                done.append(str(p))
+        print("\n".join(done))
+        return
+    out = Path(a.out)
+    {"card": lambda: card(v, out), "appendix": lambda: appendix(v, out), "where": lambda: where(v, out, base), "video": lambda: video(v, out)}[a.what]()
+    print(out)
+
+
+if __name__ == "__main__":
+    main()
