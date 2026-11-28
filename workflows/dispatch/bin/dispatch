@@ -37,7 +37,7 @@ At the limit, dispatch holds the task, prints {"queued": true, ...} and starts i
 Env: DISPATCH_MAX_PANES (default 4) panes per herdr tab before "UI Bugs 2" opens (dispatch-pick-tab).
 DISPATCH_RUNNER as --runner.
 Agent command: "<YYYY-MM-DD> <command>" in $XDG_RUNTIME_DIR/dispatch-<space>.agent (tmux: dispatch-tmux-<session>.agent)
-starts the agents of that space with <command> (for example claudet) on that day only. Default: claude.
+starts the agents of that space with <command> (for example claudet) on that day only. Default: $DISPATCH_AGENT, else claude.
 EOF
   exit 2
 }
@@ -67,7 +67,7 @@ while (($#)); do
   esac
 done
 
-skill=$HOME/.claude/skills/dispatch
+skill=${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/dispatch
 case $type in
   ui-bug) base="UI Bugs"; guide=references/pipeline.md ;;
   be-bug) base="BE Bugs"; guide=references/pipeline.md ;;
@@ -136,7 +136,7 @@ repo_name=$(basename "${main_checkout:-$PWD}")
 blackfile=$(dispatch-context -C "${main_checkout:-$PWD}" --path 2>/dev/null || echo "${XDG_CONFIG_HOME:-$HOME/.config}/dispatch/$repo_name/BLACKFILE.md")
 case $type in
   monitor|init) ;;
-  *) [[ -r $blackfile ]] || die "no $blackfile; run: dispatch --type init --name init --prompt 'Set up BLACKFILE.md: read ~/.claude/skills/dispatch/references/init.md and follow it.'" ;;
+  *) [[ -r $blackfile ]] || die "no $blackfile; run: dispatch --type init --name init --prompt 'Set up BLACKFILE.md: read $skill/references/init.md and follow it.'" ;;
 esac
 
 cwd=${main_checkout:-$PWD}
@@ -275,7 +275,7 @@ full_prompt="$head
 
 $prompt"
 
-agent_cmd=claude
+agent_cmd=${DISPATCH_AGENT:-claude}
 agent_override=${XDG_RUNTIME_DIR:-/tmp}/dispatch-$lock_key.agent
 if [[ -r $agent_override ]]; then
   read -r agent_day agent_alt _ <"$agent_override" || true

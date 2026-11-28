@@ -20,7 +20,7 @@ U
 die() { echo "dispatch-draft: $*" >&2; exit 1; }
 
 cfg=${XDG_CONFIG_HOME:-$HOME/.config}/dispatch
-live_skill=${DISPATCH_SKILL_DIR:-$HOME/.claude/skills/dispatch}
+live_skill=${DISPATCH_SKILL_DIR:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/dispatch}
 
 default_branch() {
   local b

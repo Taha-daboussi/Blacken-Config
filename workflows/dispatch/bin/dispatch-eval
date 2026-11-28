@@ -29,7 +29,7 @@ die() { echo "dispatch-eval: $*" >&2; exit 1; }
 
 live=${XDG_CONFIG_HOME:-$HOME/.config}/dispatch
 root=$live
-skill=${DISPATCH_SKILL_DIR:-$HOME/.claude/skills/dispatch}
+skill=${DISPATCH_SKILL_DIR:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/dispatch}
 agents=
 only_step=
 
