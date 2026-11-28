@@ -35,6 +35,7 @@ The pane itself runs plain `claude`, so it uses the default model and effort of 
 | 8 | Draft PR | the pane | session default | session default |
 | 9 | Manual test | the user and the pane | session default | session default |
 | 10 | Done | the pane | session default | session default |
+| 10 | Knowledge check | `dispatch-knowledge-critic` | Opus | high |
 | learn | Read PR comments | `dispatch-feedback` | Sonnet | medium |
 | learn | Retro | `dispatch-retro` | Opus | high |
 
@@ -46,7 +47,7 @@ The "Models" section of the `BLACKFILE` of a project can override these values. 
   - `SKILL.md`: the dispatcher
   - `references/`: the pane steps (`pipeline.md`), `planning.md`, `review.md`, `e2e-ui.md`, `e2e-backend.md`, `ui-rules.md`, `feedback.md`, `retro.md`, `init.md`, `coding-principles.md`
   - `templates/`: `BLACKFILE.md`, `expected.md`, `miss.md`, `eval.md`
-- `agents/` go to `~/.claude/agents` (symlinks; keep them in user scope: Claude Code skips the frontmatter hooks of an agent in a project folder that is not trusted, so the `expected.md` guard would not run): `dispatch-planner`, `dispatch-critic`, `dispatch-spec`, `dispatch-builder`, `dispatch-reviewer`, `dispatch-e2e-backend`, `dispatch-e2e-ui`, `dispatch-ui-judge`, `dispatch-feedback`, `dispatch-retro`
+- `agents/` go to `~/.claude/agents` (symlinks; keep them in user scope: Claude Code skips the frontmatter hooks of an agent in a project folder that is not trusted, so the `expected.md` guard would not run): `dispatch-planner`, `dispatch-critic`, `dispatch-spec`, `dispatch-builder`, `dispatch-reviewer`, `dispatch-e2e-backend`, `dispatch-e2e-ui`, `dispatch-ui-judge`, `dispatch-feedback`, `dispatch-retro`, `dispatch-knowledge-critic`
 - `skills/`: `grilling`, `domain-modeling`, `grill-with-docs`, vendored from [mattpocock/skills](https://github.com/mattpocock/skills) (MIT, commit `abeeaf9`)
 - `bin/` goes to `~/.local/bin` (symlinks)
   - `dispatch`: makes the worktree and the task folder, picks or makes the tab, and starts `claude` with the prompt
