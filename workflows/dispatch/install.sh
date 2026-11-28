@@ -3,12 +3,13 @@ set -euo pipefail
 src="$(cd "$(dirname "$0")" && pwd)"
 stamp="$(date +%s)"
 bin="$HOME/.local/bin"
-skills="$HOME/.claude/skills"
-agents="$HOME/.claude/agents"
-hooks="$HOME/.claude/hooks"
+cfg=${CLAUDE_CONFIG_DIR:-$HOME/.claude}
+skills="$cfg/skills"
+agents="$cfg/agents"
+hooks="$cfg/hooks"
 config="${XDG_CONFIG_HOME:-$HOME/.config}/dispatch"
 backups="${XDG_STATE_HOME:-$HOME/.local/state}/dispatch/install-backup/$stamp"
-settings="$HOME/.claude/settings.json"
+settings="$cfg/settings.json"
 add_hook=1
 for a in "$@"; do
   case $a in
@@ -91,7 +92,7 @@ else
   echo "hook: not added (--no-hook). Without the dispatch-context SessionStart hook, sessions outside dispatch do not load the BLACKFILE index."
 fi
 
-if ! jq -e '[.hooks.SessionStart[]?.hooks[]?.command] | any(test("dispatch-main.sh"))' "$HOME/.claude/settings.json" >/dev/null 2>&1; then
+if ! jq -e '[.hooks.SessionStart[]?.hooks[]?.command] | any(test("dispatch-main.sh"))' "$settings" >/dev/null 2>&1; then
   echo "Optional: to make each herdr session a dispatcher, add this SessionStart hook to ~/.claude/settings.json:"
   echo '  {"hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": "bash \"$HOME/.claude/hooks/dispatch-main.sh\""}]}]}}'
 fi

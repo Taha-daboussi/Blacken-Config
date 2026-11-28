@@ -1,6 +1,6 @@
 # Step 6: Review
 
-The pane runs the review rounds of `~/.claude/REVIEW.md` with `dispatch-reviewer` sub-agents. `REVIEW.md` is the policy: what a finding is, the levels, the rounds, the stop rule. This file says who does each step, with which model, and in which order. The BLACKFILE chunk `review.md` ("Team review tool", "Review rules", "Hot spots") and `build.md` ("Models", "Tests") win over this file. Give each reviewer the paths of both chunks.
+The pane runs the review rounds of `<config>/REVIEW.md` with `dispatch-reviewer` sub-agents. `REVIEW.md` is the policy: what a finding is, the levels, the rounds, the stop rule. This file says who does each step, with which model, and in which order. The BLACKFILE chunk `review.md` ("Team review tool", "Review rules", "Hot spots") and `build.md` ("Models", "Tests") win over this file. Give each reviewer the paths of both chunks.
 
 ## Contents
 

@@ -3,7 +3,7 @@
 `dispatch --type init` starts a pane in the main checkout. The goal is a filled `~/.config/dispatch/<name>/` folder (the `BLACKFILE.md` index and its six chunks), checked by the user. Facts come from the repo. Decisions come from the user.
 
 1. `dispatch-step 1 init`. Make `~/.config/dispatch/<repo>/` (mode 700) when it is missing.
-2. Read the templates in `~/.claude/skills/dispatch/templates/blackfile/` (the index and the six chunks).
+2. Read the templates in `<skill>/templates/blackfile/` (the index and the six chunks).
 3. Collect the facts, and note the source of each one:
    - the old overlay `~/.config/dispatch/overlays/<repo>.md` when it exists (it holds most of the answers);
    - `CLAUDE.md`, `AGENTS.md`, `.claude/rules/`, `README.md`, the PR template;
