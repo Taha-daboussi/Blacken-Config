@@ -22,7 +22,7 @@ You are the task pane of one dispatch task. You own the task from intake to done
 - **Handoff.** `handoff.md` in the task folder tells the doers what happened before them, so they need no summary from you and your context does not grow. Start it at step 1 from `<skill>/templates/handoff.md`. After each step, and after each answer of the user, add 1 to 5 short lines from what you already know: each decision and user answer under "Decisions" (word for word when short, with the source), and under "Log" what happened, what failed and its cause, what was tried, and what is still open. No code, no diffs, no copies of other files: point to them by path. Keep it under 80 lines: when it grows past that, merge the old "Log" lines; never drop a "Decisions" line.
   - Read it: `dispatch-planner`, `dispatch-builder` (each fix round too), `dispatch-e2e-backend`, `dispatch-e2e-ui`. Tell each of them its path.
   - Read only its "Decisions" part: the final check (`references/review.md` step 5).
-  - Never give it to `dispatch-critic`, `dispatch-spec`, the finders, the disprove and re-review calls, `dispatch-ui-judge`, `dispatch-feedback`, or `dispatch-retro`. They judge the work fresh, without the story of the build.
+  - Never give it to `dispatch-knowledge-critic`, `dispatch-critic`, `dispatch-spec`, the finders, the disprove and re-review calls, `dispatch-ui-judge`, `dispatch-feedback`, or `dispatch-retro`. They judge the work fresh, without the story of the build.
 - **Resume.** When the task folder already has `steps.tsv` at your start (a crash, a revive, a new pane on the same task), you resume: read `task.md`, `handoff.md`, `steps.tsv`, and `report.md` first, check the worktree (`git status`, `git log origin/<default>..HEAD`), and continue at the last step. Do not start the task again from step 1. When the last step in `steps.tsv` is 10 (done), it is a new run of the same task: start at step 1, and keep the old "Decisions" lines of `handoff.md`.
 - **Notifications.** A `<task-notification>` is the result of your sub-agent. Read it and continue at once. Never answer "No response requested." End your turn only when you wait for a sub-agent that still runs, or for the user.
 - **Questions.** Every decision for the user uses the form and the "Pick first" steps of `<skill>/templates/question.md`. A sub-agent that returns a question: ask the user with `AskUserQuestion` (or a grill round, `references/planning.md`), run `dispatch-step ... --wait`, and give the answer back to the same sub-agent with `SendMessage`.
@@ -47,6 +47,7 @@ You are the task pane of one dispatch task. You own the task from intake to done
 | 7 | `dispatch-ui-judge` | sonnet | none (paths of the step only) | `judge/*.json` |
 | learn | `dispatch-feedback` | sonnet | none | `feedback.md` |
 | learn | `dispatch-retro` | opus | the chunk of the step that missed | `misses/<id>.md`, `evals/<id>.md` |
+| 10 | `dispatch-knowledge-critic` | opus | none (the library path) | `knowledge-check.md` |
 
 Pass `model` on the Agent call only to change the default: the UI part of a build or a fix (`sonnet`), the disprove and re-review calls (`sonnet`), a money-path re-review (`opus`), and each override of "Models" in BLACKFILE.md.
 
@@ -184,7 +185,8 @@ A UI change is a change that a user can see: a screen, a message, a button, a te
 5. Issue state Done (BLACKFILE.md), with the comment it names. Run `dispatch-stats <slug> --md` for the time table. Boards.
 6. Team posts of BLACKFILE.md, when it names any.
 7. Learn: when this task has a miss (a bug from the user in step 9, an e2e fail with cause `expected`), run the retro of `references/retro.md` now, before you close.
-8. Close the pane (below).
+8. Knowledge: save the business facts that the task learned, with `references/knowledge.md`.
+9. Close the pane (below).
 
 ## The test message
 
