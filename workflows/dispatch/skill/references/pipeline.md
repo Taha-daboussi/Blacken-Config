@@ -186,7 +186,8 @@ A UI change is a change that a user can see: a screen, a message, a button, a te
 6. Team posts of BLACKFILE.md, when it names any.
 7. Learn: when this task has a miss (a bug from the user in step 9, an e2e fail with cause `expected`), run the retro of `references/retro.md` now, before you close.
 8. Knowledge: save the business facts that the task learned, with `references/knowledge.md`.
-9. Close the pane (below).
+9. Done pack: make and send it with `references/visuals.md` ("phase": "done").
+10. Close the pane (below).
 
 ## The test message
 

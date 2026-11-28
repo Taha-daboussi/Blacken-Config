@@ -30,11 +30,12 @@ Plan when one of these is true, unless the prompt says `--no-plan`:
 
 Use the method of the `grilling` skill. Load it with the Skill tool when it is installed.
 
-1. Run `dispatch-step 2 plan --wait "plan questions for <issue key>"`.
-2. Ask the whole frontier in one round with `AskUserQuestion` (max 4 questions in one call; use 2 calls for a bigger frontier). Use the form and the "Pick first" steps of `<skill>/templates/question.md`: no "(Recommended)" label, and the recommendation only after the user's pick.
-3. Each answer settles a branch and opens the next frontier. Ask the next round. A question whose answer depends on an open question of this round belongs to a later round.
-4. A question that needs a fact: start a sub-agent to find it, and ask the rest of the frontier now.
-5. Stop when the frontier is empty. Write each answer into `plan.md` and close `questions.md`.
+1. Send the plan pack of `<skill>/references/visuals.md` (card, where we change for a UI change, video, appendix), so the user sees the task before the questions.
+2. Run `dispatch-step 2 plan --wait "plan questions for <issue key>"`.
+3. Ask the whole frontier in one round with `AskUserQuestion` (max 4 questions in one call; use 2 calls for a bigger frontier). Use the form and the "Pick first" steps of `<skill>/templates/question.md`: no "(Recommended)" label, and the recommendation only after the user's pick.
+4. Each answer settles a branch and opens the next frontier. Ask the next round. A question whose answer depends on an open question of this round belongs to a later round.
+5. A question that needs a fact: start a sub-agent to find it, and ask the rest of the frontier now.
+6. Stop when the frontier is empty. Write each answer into `plan.md` and close `questions.md`.
 
 ## Glossary and decisions
 
