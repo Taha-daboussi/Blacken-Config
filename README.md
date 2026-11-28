@@ -30,6 +30,7 @@ tools/        the repo scripts and the auto push units
   - `sync.sh`: copies the current settings into the repo
   - `install.sh`: copies the repo settings onto a machine
   - `autopush.sh` and `systemd/`: the auto push
+  - `claude-tg/`: sends Telegram messages and files from Claude panes and services (see its README)
 
 Not saved: logs, sockets, sessions, window state, telemetry, and the mods that ship with Herdr.
 

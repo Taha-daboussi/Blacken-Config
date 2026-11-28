@@ -1,0 +1,117 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  echo "usage: claude-tg -t <type> [-r <repo>] [-s <service>] [-f <file>] <message>  (use - or no message to read stdin)" >&2
+  echo "-f: send the file with the message as its caption (max 1024 characters): .png/.jpg as a photo (a long image as a file), .mp4 as a video, else as a file" >&2
+  echo "types: info, error, done" >&2
+  exit 2
+}
+
+env_file="${CLAUDE_TG_ENV:-$HOME/.config/claude-telegram/env}"
+repo=""
+service=""
+type=""
+file=""
+while getopts "r:s:t:f:h" opt; do
+  case "$opt" in
+    r) repo="$OPTARG" ;;
+    s) service="$OPTARG" ;;
+    t) type="$OPTARG" ;;
+    f) file="$OPTARG" ;;
+    *) usage ;;
+  esac
+done
+shift $((OPTIND - 1))
+case "$type" in
+  info|error|done) ;;
+  *) echo "claude-tg.send.failed: type must be info, error, or done (got '${type}')" >&2; usage ;;
+esac
+
+if [ -n "$file" ]; then
+  [ -r "$file" ] || { echo "claude-tg.send.failed: cannot read $file" >&2; exit 2; }
+fi
+message="${*:-}"
+if [ "$message" = "-" ] || { [ -z "$message" ] && [ -z "$file" ]; }; then
+  message="$(cat)"
+fi
+[ -n "$message" ] || [ -n "$file" ] || { echo "claude-tg.send.failed: empty message" >&2; exit 2; }
+
+if [ -z "$repo" ]; then
+  top="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+  repo="${top:+$(basename "$top")}"
+  repo="${repo:-none}"
+fi
+service="${service:-Claude Code}"
+
+[ -r "$env_file" ] || { echo "claude-tg.send.failed: $env_file is missing" >&2; exit 1; }
+set -a
+. "$env_file"
+set +a
+[ -n "${CLAUDE_TG_BOT_TOKEN:-}" ] && [ -n "${CLAUDE_TG_CHAT_ID:-}" ] || { echo "claude-tg.send.failed: token or chat id missing in $env_file" >&2; exit 1; }
+
+if [ -n "$file" ]; then
+  caption="Repo: ${repo}
+Service: ${service}
+Type: ${type}${message:+
+
+${message}}"
+  caption="${caption:0:1024}"
+  method=sendDocument
+  field=document
+  case "${file,,}" in
+    *.png|*.jpg|*.jpeg)
+      size="$(ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0 "$file" 2>/dev/null || true)"
+      w="${size%%,*}"
+      h="${size##*,}"
+      if [[ "$w" =~ ^[0-9]+$ && "$h" =~ ^[0-9]+$ ]] && (( h <= 2560 && w <= 2560 && w + h <= 10000 )); then
+        method=sendPhoto
+        field=photo
+      fi ;;
+    *.mp4)
+      method=sendVideo
+      field=video ;;
+  esac
+  extra=()
+  [ "$method" = sendVideo ] && extra=(--form-string supports_streaming=true)
+  response="$(curl -sS -m 300 -X POST "https://api.telegram.org/bot${CLAUDE_TG_BOT_TOKEN}/${method}" \
+    --form-string "chat_id=${CLAUDE_TG_CHAT_ID}" \
+    --form-string "caption=${caption}" \
+    "${extra[@]}" \
+    -F "${field}=@${file}" 2>&1)" || {
+    echo "claude-tg.send.failed: curl error: ${response//${CLAUDE_TG_BOT_TOKEN}/<token>}" >&2
+    exit 1
+  }
+  if [ "$(printf '%s' "$response" | jq -r '.ok' 2>/dev/null)" != "true" ]; then
+    echo "claude-tg.send.failed: $(printf '%s' "$response" | jq -r '.description // "unknown error"' 2>/dev/null)" >&2
+    exit 1
+  fi
+  echo "claude-tg.send.done: ${method} message_id=$(printf '%s' "$response" | jq -r '.result.message_id')"
+  exit 0
+fi
+
+text="**Repo:** ${repo}
+**Service:** ${service}
+**Type:** ${type}
+
+${message}"
+text="$(printf '%s\n' "$text" | awk '/^[[:space:]]*(```|~~~)/ { fence = !fence; print; next } fence { print; next } { print $0 "  " }')"
+text="${text:0:32000}"
+
+body="$(jq -n --arg chat "$CLAUDE_TG_CHAT_ID" --arg md "$text" '{chat_id: $chat, rich_message: {markdown: $md}}')" || {
+  echo "claude-tg.send.failed: could not build the JSON body" >&2
+  exit 1
+}
+
+response="$(curl -sS -m 20 -X POST "https://api.telegram.org/bot${CLAUDE_TG_BOT_TOKEN}/sendRichMessage" \
+  -H "Content-Type: application/json" \
+  --data-binary "$body" 2>&1)" || {
+  echo "claude-tg.send.failed: curl error: ${response//${CLAUDE_TG_BOT_TOKEN}/<token>}" >&2
+  exit 1
+}
+
+if [ "$(printf '%s' "$response" | jq -r '.ok' 2>/dev/null)" != "true" ]; then
+  echo "claude-tg.send.failed: $(printf '%s' "$response" | jq -r '.description // "unknown error"' 2>/dev/null)" >&2
+  exit 1
+fi
+echo "claude-tg.send.done: message_id=$(printf '%s' "$response" | jq -r '.result.message_id')"

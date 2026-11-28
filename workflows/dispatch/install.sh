@@ -58,7 +58,7 @@ optional=(
   "magick:the pixel diff of the UI e2e"
   "tesseract:the OCR text of the UI e2e"
   "browser-harness:the web UI e2e (or the tool that test-env.md names)"
-  "claude-tg:the ping when a pane waits for you"
+  "claude-tg:the ping when a pane waits for you (tools/claude-tg/install.sh)"
   "timeout:the time limit of the gate and the tests"
   "flock:the start lock (without it, dispatch uses a mkdir lock)"
 )
